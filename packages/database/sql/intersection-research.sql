@@ -1,0 +1,19 @@
+-- RESEARCH WORKSHEET — not executed by PostgisGeometryRepository.
+-- TODO(intern-gis): validate each step and bind all inputs as query parameters.
+-- $1 and $2: property/event GeoJSON; $3: documented processing SRID, not a default.
+--
+-- Candidate operations to evaluate, not an approved processing pipeline:
+-- SELECT ST_GeomFromGeoJSON($1::text);
+-- SELECT ST_IsValid(ST_GeomFromGeoJSON($1::text));
+-- SELECT ST_SetSRID(geometry, source_srid); -- only label a verified source CRS
+-- SELECT ST_Transform(geometry, $3);       -- actual coordinate transformation
+-- SELECT ST_MakeValid(geometry);          -- TODO: repair, reject or flag?
+-- SELECT ST_Intersects(property, event);
+-- SELECT ST_Intersection(property, event);
+-- SELECT ST_Area(intersection);           -- units depend on the chosen CRS/type
+--
+-- TODO — research decision required:
+-- processing CRS and source CRS interpretation; geometry normalization;
+-- invalid/empty/zero-area inputs; precision; boundary-only contact;
+-- percentage denominator; meaningful intersection threshold;
+-- aggregation of overlapping events without double-counting.

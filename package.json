@@ -1,0 +1,35 @@
+{
+  "name": "jade-mt",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.34.5",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "dev": "pnpm db:migrate && pnpm build:packages && pnpm -r --parallel dev",
+    "build": "pnpm -r build",
+    "build:packages": "pnpm --filter './packages/*' -r build",
+    "test": "pnpm build:packages && vitest run",
+    "test:integration": "pnpm db:migrate && vitest run --config vitest.integration.config.ts",
+    "lint": "eslint . --max-warnings 0",
+    "typecheck": "pnpm build:packages && pnpm -r typecheck && tsc -p tsconfig.tools.json",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "db:migrate": "pnpm --filter @jade/database migrate",
+    "test:contracts": "cargo test --workspace",
+    "smoke": "node scripts/smoke.mjs",
+    "check": "pnpm build && pnpm typecheck && pnpm lint && pnpm format:check && pnpm test && cargo test --workspace && cargo fmt --check"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "22.20.2",
+    "eslint": "10.10.0",
+    "prettier": "3.9.6",
+    "tsx": "4.23.13",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.70.0",
+    "vitest": "5.0.0"
+  }
+}

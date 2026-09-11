@@ -1,0 +1,18 @@
+{
+  "name": "@jade/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --env-file-if-exists=../../.env --include \"../../packages/*/dist/**/*.js\" src/server.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node --env-file-if-exists=../../.env dist/server.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@jade/schemas": "workspace:*",
+    "@jade/database": "workspace:*",
+    "@jade/environmental-oracle": "workspace:*",
+    "fastify": "5.12.4"
+  }
+}
