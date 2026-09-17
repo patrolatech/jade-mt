@@ -90,6 +90,9 @@ importers:
       '@jade/database':
         specifier: workspace:*
         version: link:../database
+      '@jade/evidence':
+        specifier: workspace:*
+        version: link:../evidence
       '@jade/schemas':
         specifier: workspace:*
         version: link:../schemas

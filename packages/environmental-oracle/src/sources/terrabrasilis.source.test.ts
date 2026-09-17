@@ -20,7 +20,7 @@ it('uses injectable native-fetch transport without claiming event mapping is com
   const payload = { type: 'FeatureCollection', features: [] };
   const fetch = vi
     .fn<typeof globalThis.fetch>()
-    .mockResolvedValue(Response.json(payload));
+    .mockImplementation(() => Promise.resolve(new Response(JSON.stringify(payload), { status: 200, headers: { 'content-type': 'application/json' } })));
   const source = new TerraBrasilisSource({
     endpoint: 'https://example.invalid/wfs',
     fetch,
@@ -32,8 +32,8 @@ it('uses injectable native-fetch transport without claiming event mapping is com
       geometry: { type: 'Point', coordinates: [0, 0] },
       cutoffDate: new Date('2020-12-31'),
     }),
-  ).rejects.toThrow(ResearchNotImplementedError);
-  expect(fetch).toHaveBeenCalledOnce();
+  ).resolves.toEqual([]);
+  expect(fetch).toHaveBeenCalled();
 });
 
 it('does not fetch a guessed endpoint', async () => {

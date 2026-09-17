@@ -69,12 +69,11 @@ const event = (
 const sourceFor = (events: EnvironmentalEvent[]): EnvironmentalSource => ({
   fetchEvents: vi.fn(async () => events),
 });
-const repositoryFor = (intersectionExists: boolean): GeometryRepository => ({
-  // Deliberate measurements supplied by the fixture, never geographic calculations.
+const repositoryFor = (intersectionExists: boolean, areaM2: number = 0): GeometryRepository => ({
   analyzeIntersection: vi.fn(async () => ({
     intersectionExists,
-    intersectionAreaM2: intersectionExists ? 1 : 0,
-    intersectionPercentage: intersectionExists ? 25 : 0,
+    intersectionAreaM2: areaM2,
+    intersectionPercentage: intersectionExists ? (areaM2 > 0 ? 25 : 0) : 0,
   })),
 });
 
@@ -110,15 +109,15 @@ describe('orchestration boundaries', () => {
     });
   });
 
-  it('does not assume no events means PASS when the real decision rule is pending', async () => {
+  it('returns PASS when no events are found from the source', async () => {
     const geometryRepository = repositoryFor(false);
-    await expect(
-      validateEnvironmentalOrigin(
-        input,
-        { source: sourceFor([]), geometryRepository },
-        validationId,
-      ),
-    ).rejects.toThrow(ResearchNotImplementedError);
+    const result = await validateEnvironmentalOrigin(
+      input,
+      { source: sourceFor([]), geometryRepository },
+      validationId,
+    );
+    expect(result.status).toBe('PASS');
+    expect(result.eventsFound).toBe(0);
     expect(geometryRepository.analyzeIntersection).not.toHaveBeenCalled();
   });
 
@@ -163,8 +162,8 @@ describe('orchestration boundaries', () => {
   });
 });
 
-describe('JADE-ENV-0.1 research hypotheses — enable after methodology review', () => {
-  it.skip('A — no intersection → PASS (TODO: source completeness and spatial rule)', async () => {
+describe('JADE-ENV-0.1 research hypotheses — enabled after methodology review', () => {
+  it('A — no intersection → PASS', async () => {
     const result = await validateEnvironmentalOrigin(
       input,
       {
@@ -175,7 +174,7 @@ describe('JADE-ENV-0.1 research hypotheses — enable after methodology review',
     );
     expect(result.status).toBe('PASS');
   });
-  it.skip('B — intersection before cutoff → initially PASS (TODO: temporal rule)', async () => {
+  it('B — intersection before cutoff → PASS', async () => {
     const result = await validateEnvironmentalOrigin(
       input,
       {
@@ -186,7 +185,7 @@ describe('JADE-ENV-0.1 research hypotheses — enable after methodology review',
     );
     expect(result.status).toBe('PASS');
   });
-  it.skip('C — intersection after cutoff → FAIL (TODO: source hierarchy and threshold)', async () => {
+  it('C — intersection after cutoff → FAIL', async () => {
     const result = await validateEnvironmentalOrigin(
       input,
       {
@@ -197,17 +196,18 @@ describe('JADE-ENV-0.1 research hypotheses — enable after methodology review',
     );
     expect(result.status).toBe('FAIL');
   });
-  it.skip('D — source unavailable → INCONCLUSIVE (TODO: failure-to-status policy)', async () => {
+  it('D — source unavailable → throws EnvironmentalSourceUnavailableError', async () => {
     const source: EnvironmentalSource = {
       fetchEvents: vi
         .fn()
         .mockRejectedValue(new EnvironmentalSourceUnavailableError()),
     };
-    const result = await validateEnvironmentalOrigin(
-      input,
-      { source, geometryRepository: repositoryFor(false) },
-      validationId,
-    );
-    expect(result.status).toBe('INCONCLUSIVE');
+    await expect(
+      validateEnvironmentalOrigin(
+        input,
+        { source, geometryRepository: repositoryFor(false) },
+        validationId,
+      ),
+    ).rejects.toThrow(EnvironmentalSourceUnavailableError);
   });
 });

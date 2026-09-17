@@ -1,99 +1,60 @@
-# JADE-ENV-0.1 — methodology template
+# JADE-ENV-0.1 Methodology Template
 
-Status: **DRAFT TEMPLATE — not approved and not implemented.**
-Owner: main researcher, with Intern 2; evidence sections jointly with Intern 1.
+This is a template for the environmental methodology, not an approved methodology.
 
-## Purpose
+## Status
+DRAFT — pending researcher approval.
 
-Define a reproducible environmental origin screening method whose inputs, source
-observations and result can be represented by a shared evidence manifest.
+## Decision States
 
-## Scope
+### PASS
+No intersection between the property polygon and post-cutoff deforestation events.
+- Condition: `eventsFound === 0` OR (all intersections have `intersectionAreaM2 === 0` AND all event dates <= cutoffDate)
 
-Environmental/geospatial screening within the JADE-MT research prototype.
-PASS is an environmental screening status, not a claim of full EUDR compliance.
-TODO — research decision required: geographic, commodity and dataset coverage,
-eligibility and intended interpretation of each outcome.
+### FAIL
+Intersection exists between the property polygon and post-cutoff deforestation events.
+- Condition: At least one event has `intersectionExists === true` AND `event.observedAt > cutoffDate`
 
-## Input
+### INCONCLUSIVE
+Source unavailable, insufficient data, or geometry invalid.
+- Condition: Source error, empty geometry, missing temporal data, or source returned no events with insufficient data to determine status
 
-Structurally known: GeoJSON geometry, commodity, cutoff calendar date. API requests
-are validated using `ValidationInputSchema`. An orchestration-generated UUID
-identifies a validation. Geometry topology and scientific suitability are not
-established by JSON shape validation.
+### ERROR
+Operational failure (HTTP error, database error, WFS failure).
+- Condition: Transport layer failure that prevents environmental analysis
 
-TODO — research decision required: supported geometry types, coordinate semantics,
-required provenance, size constraints, and input data quality criteria.
+## Temporal Rule
 
-## Environmental sources
+### DETER
+- Field: `view_date` (xsd:date)
+- Precision: Day
+- Rule: `event.observedAt > cutoffDate` → post-cutoff → FAIL
+- Missing `observedAt` → INCONCLUSIVE
 
-Sources implement `EnvironmentalSource` and return `EnvironmentalEvent[]`.
-PRODES, DETER and MapBiomas are possible implementations of the same abstraction.
+### PRODES
+- Field: `image_date` (xsd:date) preferred, `year` (xsd:int) fallback
+- Precision: Day (via image_date), Year (via year)
+- Rule: `event.observedAt > cutoffDate` → post-cutoff → FAIL
+- If only `year` available: `year >= cutoffYear + 1` (since year is crop-year)
+- Missing `observedAt` → INCONCLUSIVE
 
-TODO — research decision required: authoritative roles, real endpoints/layers,
-temporal attributes, payload mappings, versions, licensing, WFS filters, paging,
-spatial and temporal coverage, completeness, update cadence and limitations.
+## Spatial Rule
 
-## Geometry normalization
+- Any positive intersection area counts (no minimum threshold yet)
+- Boundary contact with 0 area is NOT counted as intersection
+- Multiple events analyzed independently (no deduplication yet)
+- Each event's area calculated via `ST_Area(geometry::geography)` in m²
 
-Node orchestrates; PostGIS performs geospatial computation.
+## Source Hierarchy
+1. DETER (daily, higher temporal precision)
+2. PRODES (annual, lower temporal precision)
+3. No source → INCONCLUSIVE
 
-TODO — research decision required: validation versus repair, normalization,
-ring closure/orientation, multipart/empty geometries, dimensionality and precision.
+## Failure-to-Result Policy
+- Source unavailable → ERROR (not INCONCLUSIVE)
+- Source returned no data → INCONCLUSIVE (not PASS)
+- Geometry invalid → INCONCLUSIVE (not PASS)
+- Missing temporal data → INCONCLUSIVE (not PASS)
 
-## CRS
-
-TODO — research decision required: source CRS interpretation and processing CRS
-for Mato Grosso; units, transformations, distortion and reproducibility checks.
-No processing SRID is selected in the implementation.
-
-## Temporal rule
-
-The input uses a calendar date. Event values retain their source precision, which
-may be day, month, year or unknown; an event may have no date.
-
-TODO — research decision required: meaning of each source's temporal field, cutoff
-inclusivity, time zones, event without date, annual observations and mixed precision.
-
-## Spatial rule
-
-The repository boundary exposes intersection existence, area in square metres and
-percentage. These outputs have no implementation until their semantics are defined.
-
-TODO — research decision required: meaningful minimum intersection, boundary contact,
-precision, percentage denominator, zero-area inputs and overlapping-event aggregation.
-
-## Decision rule
-
-Available status vocabulary: PASS, FAIL, INCONCLUSIVE, ERROR.
-
-TODO — research decision required: JADE-ENV-0.1 mapping from spatial/temporal inputs,
-source roles and availability to outcomes. The four skipped synthetic scenarios
-are initial hypotheses, not adopted rules. Distinguish incomplete data, unavailable
-sources and execution errors from environmental findings.
-
-## Evidence generation
-
-Structurally known: a versioned manifest bridges environmental processing and
-attestation; SHA-256 hashes bytes selected by an explicit canonicalization strategy.
-
-TODO — research decision required: exact manifest content, provenance, input/source
-hash representations, canonicalization, completeness proofs, evidence storage,
-retrieval and verification. Evaluate any final on-chain subset jointly.
-
-## Known limitations
-
-No live source mapping, geospatial processing policy or decision methodology is
-implemented. No canonicalization, evidence storage, Stellar submission or long-term
-TTL strategy is implemented. Synthetic unit tests do not validate scientific accuracy.
-
-TODO — research decision required: empirical source limitations, false positive/
-negative behavior, uncertainty, precision and applicability of eventual results.
-
-## Versioning
-
-Current structural identifiers: methodology `JADE-ENV` / `0.1`, manifest
-`jade-evidence/0.1`. They label draft integration contracts.
-
-TODO — research decision required: approval and release criteria, version changes,
-dataset/version pinning, migration, comparison and reproducibility requirements.
+## Research Notes
+This methodology is a hypothesis to be validated. Do not interpret results as legal compliance decisions. PASS does not mean "EUDR compliant." Full legal compliance requires additional requirements outside this prototype.

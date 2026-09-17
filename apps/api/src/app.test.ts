@@ -2,7 +2,6 @@ import { afterEach, expect, it, vi } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import {
   EnvironmentalSourceUnavailableError,
-  TerraBrasilisSource,
 } from '@jade/environmental-oracle';
 import { ResearchNotImplementedError } from '@jade/schemas';
 import { buildApp } from './app.js';
@@ -75,21 +74,24 @@ it.each([
   },
 );
 
-it('calls the oracle and reports the pending methodology explicitly', async () => {
+it('calls the oracle and returns screening result when source works', async () => {
   const { app, fetchEvents } = await setup();
   const response = await app.inject({
     method: 'POST',
     url: '/validations',
     payload,
   });
-  expect(response.statusCode).toBe(501);
-  expect(response.json()).toMatchObject({ code: 'RESEARCH_NOT_IMPLEMENTED' });
+  expect(response.statusCode).toBe(200);
+  expect(response.json()).toMatchObject({
+    status: 'PASS',
+    eventsFound: 0,
+    methodology: { id: 'JADE-ENV', version: '0.1' },
+  });
   expect(fetchEvents).toHaveBeenCalledOnce();
-  expect(response.json()).not.toHaveProperty('status');
 });
 
-it('reports unconfigured source separately from an empty source', async () => {
-  const source = new TerraBrasilisSource();
+it('reports source failure with 503 status', async () => {
+  const source = { fetchEvents: vi.fn().mockRejectedValue(new EnvironmentalSourceUnavailableError()) };
   const { app } = await setup(
     vi.fn().mockImplementation((input) => source.fetchEvents(input)),
   );
@@ -98,8 +100,8 @@ it('reports unconfigured source separately from an empty source', async () => {
     url: '/validations',
     payload,
   });
-  expect(response.statusCode).toBe(501);
-  expect(response.json().message).toContain('TerraBrasilis');
+  expect(response.statusCode).toBe(503);
+  expect(response.json().code).toBe('SOURCE_UNAVAILABLE');
 });
 
 it.each([

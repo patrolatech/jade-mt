@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@jade/schemas": "workspace:*",
-    "@jade/database": "workspace:*"
+    "@jade/database": "workspace:*",
+    "@jade/evidence": "workspace:*"
   }
 }

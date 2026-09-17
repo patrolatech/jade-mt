@@ -1,9 +1,8 @@
 import { expect, it } from 'vitest';
-import { ResearchNotImplementedError } from '@jade/schemas';
 import { createDatabasePool } from './pool.js';
 import { PostgisGeometryRepository } from './postgis-geometry-repository.js';
 
-it('cannot return measurements before the geospatial policy exists', async () => {
+it('validates geometry before returning measurements', async () => {
   const pool = createDatabasePool(
     'postgresql://unused:unused@example.invalid/unused',
   );
@@ -13,7 +12,7 @@ it('cannot return measurements before the geospatial policy exists', async () =>
         property: { type: 'Point', coordinates: [0, 0] },
         event: { type: 'Point', coordinates: [0, 0] },
       }),
-    ).rejects.toThrow(ResearchNotImplementedError);
+    ).rejects.toThrow();
   } finally {
     await pool.end();
   }

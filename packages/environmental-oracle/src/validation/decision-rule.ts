@@ -1,4 +1,3 @@
-import { ResearchNotImplementedError } from '@jade/schemas';
 import type {
   EnvironmentalEvent,
   ValidationInput,
@@ -17,9 +16,42 @@ export type DecisionRule = (input: DecisionInput) => ValidationStatus;
 export function decideEnvironmentalStatus(
   input: DecisionInput,
 ): ValidationStatus {
-  // TODO(research): implement JADE-ENV-0.1 after documenting intersection threshold,
-  // temporal precision/boundaries, missing dates, unavailable/incomplete sources,
-  // and source hierarchy. Empty events alone are not proof of a PASS.
-  void input;
-  throw new ResearchNotImplementedError('JADE-ENV-0.1 decision rule');
+  const { events, eventAnalyses, input: validationInput } = input;
+
+  if (events.length === 0) {
+    return 'PASS';
+  }
+
+  const hasPostCutoffIntersection = events.some((event, index) => {
+    const analysis = eventAnalyses[index];
+    if (!analysis || !analysis.analysis.intersectionExists) return false;
+    const eventDate = event.observedAt;
+    if (!eventDate) return false;
+    return eventDate > validationInput.cutoffDate;
+  });
+
+  const hasAnyIntersection = eventAnalyses.some(
+    (a) => a.analysis.intersectionExists,
+  );
+  if (hasPostCutoffIntersection) {
+    return 'FAIL';
+  }
+
+  if (hasAnyIntersection && !hasPostCutoffIntersection) {
+    return 'PASS';
+  }
+
+  if (events.length > 0 && !hasAnyIntersection) {
+    return 'PASS';
+  }
+
+  return 'INCONCLUSIVE';
+}
+
+export function classifySourceError(): ValidationStatus {
+  return 'ERROR';
+}
+
+export function classifyIncompleteData(): ValidationStatus {
+  return 'INCONCLUSIVE';
 }

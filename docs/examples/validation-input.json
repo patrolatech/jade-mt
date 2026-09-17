@@ -1,16 +1,1 @@
-{
-  "geometry": {
-    "type": "Polygon",
-    "coordinates": [
-      [
-        [0, 0],
-        [1, 0],
-        [1, 1],
-        [0, 1],
-        [0, 0]
-      ]
-    ]
-  },
-  "commodity": "soy",
-  "cutoffDate": "2020-12-31"
-}
+{"geometry": {"type": "Polygon", "coordinates": [[[-52.5, -8.5], [-50.0, -8.5], [-50.0, -10.5], [-52.5, -10.5], [-52.5, -8.5]]]}, "commodity": "soy", "cutoffDate": "2020-12-31"}
