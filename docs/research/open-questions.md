@@ -25,10 +25,10 @@ resolving a question. This starter intentionally supplies no scientific answers.
 
 ## Intern 1 — Blockchain/Evidence
 
-- What exactly is canonicalized before evidence hashing?
-- How are geometryHash, payloadHash and evidenceHash inputs/bytes defined independently?
-- Which deterministic representation produces the same hash for semantically equal evidence?
-- Which evidence fields belong on-chain? What is the minimal final attestation schema?
+- What exactly is canonicalized before evidence hashing? — **resolved**: the full `EvidenceManifestV01` via RFC 8785 (JCS), see `docs/research/evidence-hashing.md`.
+- How are geometryHash, payloadHash and evidenceHash inputs/bytes defined independently? — **resolved** in `docs/research/evidence-hashing.md`; coordinate precision and processing CRS remain open GIS decisions.
+- Which deterministic representation produces the same hash for semantically equal evidence? — **resolved**: JCS, implemented as `jcsEvidenceCanonicalizer` (`packages/evidence/src/jcs-canonicalizer.ts`), proven order-independent by known-vector tests.
+- Which evidence fields belong on-chain? What is the minimal final attestation schema? — **v0.1 field set and an initial on-chain/off-chain split are closed**, see `docs/research/evidence-manifest-v01.md`; whether any off-chain summary field should also become a Soroban _event_ is still open for Atividade 3.
 - Does transaction authorization make an additional validator signature redundant?
 - Is the initial single admin/validator model sufficient, and how should authority change over time?
 - How should Soroban TTL be maintained over multi-year certificates?
@@ -37,11 +37,11 @@ resolving a question. This starter intentionally supplies no scientific answers.
 - What happens on archival and restoration? Who pays and what is the operational responsibility?
 - What are deployment, attestation, read, revoke, TTL extension and restoration costs?
 - How should the off-chain adapter bind ABI types, simulate, sign, submit, confirm and recover transactions?
-- Should evidence initially use S3/MinIO or IPFS?
+- Should evidence initially use S3/MinIO or IPFS? — the manifest now reserves an optional `evidenceUri` pointer for this (`docs/research/evidence-manifest-v01.md`); the storage backend choice itself is still open.
 
 ## Joint decisions and main researcher
 
-- What is the final EvidenceManifest schema and its compatibility/versioning policy?
+- What is the final EvidenceManifest schema and its compatibility/versioning policy? — **v0.1 field set closed**, see `docs/research/evidence-manifest-v01.md`; `lotId` and a `warnings` field were evaluated and deliberately not added (see that document's "Candidate new fields" section) pending product/methodology decisions.
 - What evidence must accompany incomplete/inconclusive/error outcomes?
 - Which metadata proves dataset/version coverage and supports reproduction?
 - When can scenarios A–D be enabled as approved methodology tests?

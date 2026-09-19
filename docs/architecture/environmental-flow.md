@@ -39,11 +39,11 @@ executable in isolation without doing the interns' research.
 not a claim that the method has been implemented or approved. An evidence manifest
 must eventually carry provenance sufficient to reproduce a screening result.
 
-| Hash         | Intended subject                                  | Unresolved detail                                   |
-| ------------ | ------------------------------------------------- | --------------------------------------------------- |
-| geometryHash | submitted/normalized geometry representation      | representation, CRS metadata, normalization, bytes  |
-| payloadHash  | a retrieved source payload                        | raw or transformed bytes, paging, metadata coverage |
-| evidenceHash | canonical bytes of the complete evidence manifest | canonicalization standard and exact field coverage  |
+| Hash         | Intended subject                                                   | Resolution                                                                                                                                        |
+| ------------ | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| geometryHash | submitted geometry, unnormalized, as validated by `GeometrySchema` | JCS canonical bytes of the geometry, WGS84 implied by GeoJSON; precision/normalization still a GIS decision — `docs/research/evidence-hashing.md` |
+| payloadHash  | one retrieved source response's raw bytes                          | raw bytes, pre-parsing, pages concatenated in fetch order — `docs/research/evidence-hashing.md`                                                   |
+| evidenceHash | canonical bytes of the complete evidence manifest                  | RFC 8785 (JCS) over the full `EvidenceManifestV01` — `docs/research/evidence-hashing.md`                                                          |
 
 These hashes are distinct and must never substitute for one another. The manifest
 does not contain its own evidenceHash. SHA-256 returns lowercase 64-character hex;
@@ -51,9 +51,11 @@ the initial contract accepts `BytesN<32>`. The future Stellar adapter must conve
 and validate the representation explicitly.
 
 `hashEvidence(manifest, canonicalizer)` calls the canonicalizer and hashes its exact
-bytes with Node `node:crypto`. Omitting the strategy throws. The only currently
-supplied strategy is a test fixture using the standard `abc` SHA-256 vector; it is
-not an evidence serialization implementation. No `JSON.stringify` fallback exists.
+bytes with Node `node:crypto`. Omitting the strategy throws; no `JSON.stringify`
+fallback exists. `jcsEvidenceCanonicalizer` (`packages/evidence/src/jcs-canonicalizer.ts`)
+is the supplied RFC 8785 implementation, passed explicitly by callers. `hashGeometry`
+and `hashPayload` (`packages/evidence/src/`) implement `geometryHash` and
+`payloadHash` the same way, ready for the future manifest-composition layer to call.
 
 Manifest summary areas may be null when unmeasured. Zero requires a measurement.
 Per-event areas cannot automatically be summed because events may overlap;
