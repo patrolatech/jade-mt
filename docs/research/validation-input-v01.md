@@ -1,52 +1,40 @@
-# Validation Input v0.1
+# Validation input v0.1
 
-## Accepted Geometry Types
-- `Polygon` — Simple polygon with exterior ring
-- `MultiPolygon` — Multiple polygons
+| Field                    | Contract                                                  |
+| ------------------------ | --------------------------------------------------------- |
+| `geometry`               | Non-empty 2D GeoJSON Polygon or MultiPolygon in EPSG:4326 |
+| `commodity`              | Non-blank string, up to 100 characters                    |
+| `cutoffDate`             | Calendar date in YYYY-MM-DD format; compared as a UTC day |
+| `property_id`, `plot_id` | Optional external identifiers, 1–128 characters each      |
 
-## Validation Rules
-1. **Type check**: Must be Polygon or MultiPolygon (enforced by `GeometrySchema` in TypeBox)
-2. **Empty geometry**: Rejected via `ST_IsValid` check in PostGIS
-3. **Invalid geometry**: Rejected with `ST_IsValidReason` — NOT auto-repaired without researcher approval
-4. **Self-intersection**: Detected by `ST_IsValid`, rejected
-5. **Holes**: Supported (valid Polygon with holes passes validation)
-6. **Zero-area**: Rejected (area calculation returns 0)
-7. **Boundary-only contact**: Included in intersection analysis (documented behavior)
+The API generates a UUID `validationId`. External IDs are caller references;
+they do not establish ownership or CAR registration and are not WFS filters.
+Unknown fields are rejected, including `crs` and `bbox` inside the geometry.
+See the [Sinop example](../examples/validation-input-sinop.json).
 
-## CRS
-- **Input CRS**: EPSG:4326 (WGS84)
-- **Processing CRS**: EPSG:4326 (no transformation needed)
-- **Source CRS**: Verified EPSG:4326 from TerraBrasilis WFS response
-- **Reprojection**: Not needed since source == processing CRS
-- **Area unit**: m² via `ST_Area(geometry::geography)` on WGS84 ellipsoid
+## Geometry and limits
 
-## Additional Fields
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `geometry` | GeoJSON | Yes | Polygon or MultiPolygon |
-| `commodity` | string | Yes | Associated commodity (e.g., soy, cattle) |
-| `cutoffDate` | string (date) | Yes | ISO 8601 date (YYYY-MM-DD) |
+Coordinates are [longitude, latitude] in degrees, within [-180,180] and [-90,90].
+Transform other CRS inputs before submission. Rings need at least four positions
+and must close exactly. Holes and MultiPolygon components are preserved.
+Point, LineString, GeometryCollection, and altitude/Z input are rejected.
 
-## Maximum Size
-TBD — subject to research. No explicit limit defined yet.
+The limit is 5,000 positions across all rings, including closing positions, and a
+1 MiB HTTP body. There is no area limit or Mato Grosso containment check. Source
+coverage remains unknown even when the input is valid.
 
-## ID Requirements
-- `validationId`: UUID v4 generated per validation request
-- `property_id`: Optional property identifier from input
-- `plot_id`: Optional plot identifier from input
+Structural checks run before SQL. PostGIS then checks topology and requires a
+finite, positive area before any source query. No repair, rounding, simplification,
+or ring reorientation is applied. See the [geometry policy](geometry-crs-policy.md).
 
-## Temporal Precision
-- `temporalPrecision: 'day'` for DETER (exact detection date)
-- `temporalPrecision: 'day'` for PRODES (via `image_date`)
-- `temporalPrecision: 'year'` for PRODES (via `year` field, not recommended)
-- Missing dates → `temporalPrecision: 'unknown'`, treated as INCONCLUSIVE
+## Errors
 
-## Boundary Behavior
-- Polygons that only touch at boundary (no area overlap) are included in intersection analysis
-- Boundary contact without area overlap: `intersectionExists = false` (ST_Intersects returns true for boundary contact but ST_Area of intersection is 0)
+- Invalid input: HTTP 400; oversized body: HTTP 413.
+- Topologically invalid source event: HTTP 200/INCONCLUSIVE with its feature ID
+  and an issue. Valid events still receive measurements.
+- Structurally malformed WFS payload: HTTP 503/SOURCE_UNAVAILABLE.
+- Local storage or database failure: HTTP 500/INTERNAL_ERROR.
 
-## Research Decisions (Pending)
-- Maximum polygon size
-- Whether to allow GeometryCollection
-- Coordinate precision tolerance
-- Minimum intersection threshold
+Point or edge contact alone produces `intersectionExists: false`, 0 m², and 0%.
+The percentage denominator is property area excluding holes; events are measured
+independently, without an aggregated union.

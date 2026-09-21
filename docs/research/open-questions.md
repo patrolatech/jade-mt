@@ -1,36 +1,24 @@
-# Open Research Questions
+# Open decisions
 
-## GIS and Geometry
-- [ ] Maximum polygon size for validation
-- [ ] Whether to allow GeometryCollection type
-- [ ] Coordinate precision tolerance for floating-point comparisons
-- [ ] Minimum intersection area threshold for meaningful results
-- [ ] Whether to implement ST_MakeValid auto-repair (pending researcher approval)
-- [ ] Deduplication strategy for overlapping events
+Scientific approval is recorded in [JADE-ENV-0.1](../methodology/JADE-ENV-0.1.md).
+The API remains INCONCLUSIVE while that methodology is draft.
 
-## Temporal Rules
-- [ ] PRODES crop-year interpretation vs image_date precision
-- [ ] Whether year field should be used when image_date is unavailable
-- [ ] How to handle events with missing temporal data
-- [ ] Temporal precision of DETER view_date vs actual detection time
+## Scientific
 
-## Source and Coverage
-- [ ] Real TerraBrasilis endpoint verification and testing
-- [ ] DETER public layer areatotalkm filter impact on results
-- [ ] PRODES yearly_deforestation truncation/pagination limits
-- [ ] Whether other workspaces (cerrado, caatinga) should be added
+- Define the meaning of `view_date`, `image_date`, and PRODES `year` for each class.
+- Define sufficient spatial and temporal coverage: biome, clouds, publication
+  delays, revisions, and minimum observable area. Decide which additional layers
+  are needed for Cerrado and Pantanal.
+- Approve cutoff inclusivity, date intervals, and uncertainty precedence.
+- Approve topology, processing CRS, area thresholds, and numerical tolerance.
+- Decide whether geometry repair is needed. It is currently disabled.
 
-## Methodology
-- [ ] JADE-ENV-0.1 methodology approval status
-- [ ] Legal compliance implications of PASS/FAIL results
-- [ ] Threshold for meaningful intersection percentage
-- [ ] Source hierarchy when multiple sources return conflicting results
+## Implementation
 
-## Evidence and Blockchain
-- [ ] EvidenceManifestV01 finalization
-- [ ] Canonical evidence representation
-- [ ] Stellar/Soroban binding design
-- [ ] On-chain storage economics
-
-## Status
-All items are research questions. Do not treat any as resolved without researcher approval.
+- Preserve source event classes in the normalized event model before implementing
+  class-dependent decisions. They currently survive only in raw payloads.
+- Bound the complete validation workload. The WFS timeout does not cover the
+  subsequent PostGIS loop; response bytes and concurrent runs are not capped.
+- Define evidence retention and recovery of runs left `running` after a crash.
+- Select geometry and manifest canonicalization before connecting evidence to
+  Stellar. Contract TTL, restoration, and deployment remain separate work.

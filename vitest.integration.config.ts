@@ -6,6 +6,9 @@ if (existsSync('.env')) process.loadEnvFile('.env');
 export default defineConfig({
   test: {
     environment: 'node',
-    include: ['packages/database/src/**/*.integration.test.ts'],
+    include: [
+      'packages/database/src/**/*.integration.test.ts',
+      'apps/api/src/**/*.integration.test.ts',
+    ],
   },
 });

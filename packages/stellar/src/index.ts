@@ -27,9 +27,6 @@ export interface StellarClientConfig {
 export function createStellarClient(
   config: StellarClientConfig,
 ): AttestationClient {
-  // TODO(intern-blockchain): generated contract bindings, enum/BytesN conversion,
-  // simulation, external signer, submission, confirmation, and restoration.
-  // No keys, network calls, or pretend transaction IDs are introduced by this stub.
   void config;
   const pending = () =>
     Promise.reject(new ResearchNotImplementedError('Stellar contract client'));

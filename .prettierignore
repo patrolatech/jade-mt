@@ -4,3 +4,6 @@ target
 pnpm-lock.yaml
 Cargo.lock
 contracts
+
+# Raw environmental evidence must retain byte-for-byte payload hashes.
+.data/
