@@ -1,61 +1,29 @@
--- APPROVED INTERSECTION RESEARCH QUERIES
--- All inputs bound as parameterized query parameters.
--- Processing SRID: 4326 (EPSG:4326, matches WFS actual coordinate format).
--- Source CRS: Verified EPSG:4326 from TerraBrasilis WFS response.
--- No reprojection needed since source == processing CRS.
+WITH samples(name, geom) AS (
+  VALUES
+    ('sinop', ST_MakeEnvelope(-55.6, -12.0, -55.4, -11.8, 4326)),
+    ('west_mt', ST_MakeEnvelope(-60.1, -15.1, -59.9, -14.9, 4326)),
+    ('east_mt', ST_MakeEnvelope(-52.1, -15.1, -51.9, -14.9, 4326)),
+    ('south_mt', ST_MakeEnvelope(-57.1, -17.1, -56.9, -16.9, 4326))
+), measurements AS (
+  SELECT name, geom, ST_Area(geom::geography) AS ellipsoid_m2,
+    ST_Area(ST_Transform(geom, 5880)) AS polyconic_m2,
+    ST_Area(ST_Transform(geom, 31981)) AS utm21s_m2,
+    ST_Area(ST_Intersection(geom, geom)::geography) AS planar_clip_m2,
+    ST_Area(ST_Intersection(geom::geography, geom::geography)) AS geography_clip_m2,
+    ST_Area(ST_Transform(ST_SetSRID(geom, 4674), 4326)::geography) AS transformed_sirgas_m2
+  FROM samples
+)
+SELECT name, ellipsoid_m2, polyconic_m2, utm21s_m2, planar_clip_m2,
+  geography_clip_m2, transformed_sirgas_m2,
+  100 * (polyconic_m2 / ellipsoid_m2 - 1) AS polyconic_difference_percent,
+  100 * (utm21s_m2 / ellipsoid_m2 - 1) AS utm_difference_percent
+FROM measurements ORDER BY name;
 
--- 1. Validate geometry
--- SELECT ST_IsValid(ST_GeomFromGeoJSON($1)) AS valid, ST_IsValidReason(ST_GeomFromGeoJSON($1)) AS reason;
-
--- 2. Create geometry with SRID label
--- SELECT ST_SetSRID(ST_GeomFromGeoJSON($1), 4326) AS geom;
-
--- 3. Reprojection (if source CRS differs from processing CRS)
--- SELECT ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON($1), source_srid), 4326) AS geom;
-
--- 4. Invalid geometry handling (REJECT, do NOT auto-repair without researcher approval)
--- SELECT ST_IsValid(ST_GeomFromGeoJSON($1));
--- If false, throw ResearchNotImplementedError with ST_IsValidReason
-
--- 5. Spatial intersection test
--- SELECT ST_Intersects(
---   ST_SetSRID(ST_GeomFromGeoJSON($1), 4326),
---   ST_SetSRID(ST_GeomFromGeoJSON($2), 4326)
--- ) AS intersects;
-
--- 6. Spatial intersection geometry
--- SELECT ST_Intersection(
---   ST_SetSRID(ST_GeomFromGeoJSON($1), 4326),
---   ST_SetSRID(ST_GeomFromGeoJSON($2), 4326)
--- ) AS intersection_geom;
-
--- 7. Area calculation using geography type for accurate m2 on WGS84 ellipsoid
--- SELECT ST_Area(geom::geography) AS area_m2 FROM (
---   SELECT ST_Intersection(
---     ST_SetSRID(ST_GeomFromGeoJSON($1), 4326),
---     ST_SetSRID(ST_GeomFromGeoJSON($2), 4326)
---   ) AS geom
--- ) sub;
-
--- 8. Property area for percentage denominator
--- SELECT ST_Area(ST_SetSRID(ST_GeomFromGeoJSON($1), 4326)::geography) AS area_m2;
-
--- 9. Combined intersection analysis
--- WITH property_geom AS (SELECT ST_SetSRID(ST_GeomFromGeoJSON($1), 4326) AS geom),
---      event_geom AS (SELECT ST_SetSRID(ST_GeomFromGeoJSON($2), 4326) AS geom)
--- SELECT
---   ST_Intersects(p.geom, e.geom) AS intersects,
---   ST_Area(ST_Intersection(p.geom::geography, e.geom::geography)) AS intersection_area_m2,
---   ST_Area(p.geom::geography) AS property_area_m2
--- FROM property_geom p, event_geom e;
-
--- Research decisions applied:
--- - Processing CRS: EPSG:4326 (no transformation needed)
--- - Invalid geometry: REJECT (not auto-repaired without researcher approval)
--- - Area calculation: ST_Area(geometry::geography) for m2 on WGS84 ellipsoid
--- - Percentage denominator: property area (ST_Area(property_geom::geography))
--- - Empty geometry: REJECT via ST_IsValid check
--- - Zero-area: REJECT
--- - Boundary-only contact: Included in intersection (documented behavior)
--- - Overlap/double counting: Each event analyzed independently (no deduplication)
--- - Minimum threshold: Any positive intersection area counts (documented, researcher may change)
+WITH sample AS (
+  SELECT ST_GeomFromText('POLYGON((-55.6 -12,-55.4 -11.8,-55.6 -11.8,-55.4 -12,-55.6 -12))', 4326) AS geom
+)
+SELECT ST_IsValid(geom) AS original_valid, ST_IsValidReason(geom) AS reason,
+  ST_IsValid(ST_MakeValid(geom)) AS repaired_valid,
+  GeometryType(ST_MakeValid(geom)) AS repaired_type,
+  ST_AsGeoJSON(ST_MakeValid(geom)) AS repaired_geojson
+FROM sample;
