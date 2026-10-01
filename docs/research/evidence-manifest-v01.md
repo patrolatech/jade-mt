@@ -105,8 +105,8 @@ No fields were removed or made optional beyond the two additions above.
   on the joint decision-rule mapping in `docs/methodology/JADE-ENV-0.1.md`
 - Storage backend for `evidenceUri` (S3/MinIO vs IPFS) —
   `docs/research/open-questions.md:40`, unchanged by this activity
-- Which off-chain fields, if any, should become Soroban events rather than
-  staying purely off-chain — deferred to Atividade 3
+- Which off-chain fields, if any, should become Soroban events — **none in v0.1**,
+  decided in `docs/research/attestation-model-v01.md`
 
 ## Expected result
 
