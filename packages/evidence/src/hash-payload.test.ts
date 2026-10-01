@@ -17,11 +17,9 @@ it('does not transform the bytes: whitespace or field order in a JSON payload ch
   expect(hashPayload(spaced)).not.toBe(hashPayload(compact));
 });
 
-it('hashes concatenated pages in fetch order, not merged/reordered', () => {
-  const pageOne = Buffer.from('page-1-bytes', 'utf8');
-  const pageTwo = Buffer.from('page-2-bytes', 'utf8');
-  const inFetchOrder = Buffer.concat([pageOne, pageTwo]);
-  const reordered = Buffer.concat([pageTwo, pageOne]);
-
-  expect(hashPayload(inFetchOrder)).not.toBe(hashPayload(reordered));
+it('keeps page digests separate even when concatenations would collide', () => {
+  const first = [Buffer.from('ab'), Buffer.from('c')].map(hashPayload);
+  const second = [Buffer.from('a'), Buffer.from('bc')].map(hashPayload);
+  expect(first).not.toEqual(second);
+  expect(first).not.toEqual([...first].reverse());
 });

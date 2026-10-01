@@ -1,99 +1,91 @@
-# JADE-ENV-0.1 — methodology template
+# JADE-ENV-0.1 — Technical Decision Proposal
 
-Status: **DRAFT TEMPLATE — not approved and not implemented.**
-Owner: main researcher, with Intern 2; evidence sections jointly with Intern 1.
+Status: **DRAFT — pending researcher approval**. Code and passing tests do not
+establish approval. The default execution returns INCONCLUSIVE with
+METHODOLOGY_PENDING_APPROVAL and the available measurements and evidence. No HTTP
+parameter or environment variable can declare approval.
 
-## Purpose
+## Temporal input
 
-Define a reproducible environmental origin screening method whose inputs, source
-observations and result can be represented by a shared evidence manifest.
+`cutoffDate` is a UTC calendar day, included in the earlier period: an occurrence
+on that date belongs to "before or on the cutoff." Daily dates are validated
+against the calendar, including leap years. Monthly precision spans the first
+through the last day of the month; an occurrence year spans January 1 through
+December 31. An interval crossing the cutoff is uncertain. Missing dates, invalid
+values, and unknown semantics are never converted into exact dates. Parsing,
+period boundaries, and comparisons use `date-fns` with UTC context.
 
-## Scope
+DETER `view_date` and PRODES `image_date` represent observations, rather than the
+exact start of an occurrence. The `xsd:date` schema defines the format, not its
+environmental meaning. An observation after the cutoff may detect an earlier
+occurrence. In this proposal, an observation before or on the cutoff bounds the
+occurrence to the earlier period; a later observation remains uncertain. The
+researcher must review this inference for the selected event classes.
 
-Environmental/geospatial screening within the JADE-MT research prototype.
-PASS is an environmental screening status, not a claim of full EUDR compliance.
-TODO — research decision required: geographic, commodity and dataset coverage,
-eligibility and intended interpretation of each outcome.
+PRODES `year` remains a reporting year (`temporalBasis: prodes-year`), without
+conversion to January 1, December 31, or a calendar year of occurrence. It is a
+fallback only when `image_date` is missing. Relating this reporting cycle to an
+occurrence requires a scientific decision; the experimental rule treats it as
+uncertain. Normal source queries use no temporal filter: older, undated, and
+coarse observations remain available for analysis. WFS temporal filters were
+researched separately.
 
-## Input
+## Executable decision table
 
-Structurally known: GeoJSON geometry, commodity, cutoff calendar date. API requests
-are validated using `ValidationInputSchema`. An orchestration-generated UUID
-identifies a validation. Geometry topology and scientific suitability are not
-established by JSON shape validation.
+`evaluateDecisionProposal` can produce conclusive results only when source
+coverage is sufficient and occurrence semantics are established. Live sources
+currently report `coverage=unknown`; HTTP success and `numberMatched` do not
+establish environmental coverage.
 
-TODO — research decision required: supported geometry types, coordinate semantics,
-required provenance, size constraints, and input data quality criteria.
+| Case / condition, in precedence order                                                   | Proposal                                     | Current default API                     |
+| --------------------------------------------------------------------------------------- | -------------------------------------------- | --------------------------------------- |
+| HTTP/WFS failure, timeout, incomplete page, invalid payload, exceeded limit             | Operational ERROR; no environmental decision | HTTP 503 / SOURCE_UNAVAILABLE           |
+| Database or internal failure                                                            | Operational ERROR                            | HTTP 500 / INTERNAL_ERROR               |
+| Invalid input                                                                           | Request error                                | HTTP 400; 413 for body >1 MiB           |
+| Incomplete geometry analysis or topologically invalid event                             | INCONCLUSIVE                                 | HTTP 200 + issue with event ID          |
+| Missing methodology approval                                                            | INCONCLUSIVE                                 | HTTP 200 + METHODOLOGY_PENDING_APPROVAL |
+| D1 — insufficient or unknown coverage                                                   | INCONCLUSIVE                                 | HTTP 200 + INSUFFICIENT_COVERAGE        |
+| Missing date, ambiguous interval, or uncertain semantics for a positive intersection    | INCONCLUSIVE                                 | HTTP 200 + UNCERTAIN_EVENT_DATE         |
+| A — no positive-area intersection, sufficient coverage                                  | PASS                                         | INCONCLUSIVE while DRAFT                |
+| B — all positive intersections established before or on the cutoff                      | PASS                                         | INCONCLUSIVE while DRAFT                |
+| C — at least one occurrence established after the cutoff, with no remaining uncertainty | FAIL                                         | INCONCLUSIVE while DRAFT                |
 
-## Environmental sources
+Insufficient data and uncertainty take precedence, including in mixed event sets.
+This precedence requires researcher approval. Boundary contact with zero area does
+not count as affected area. Measurements are associated by feature ID, regardless
+of array order. Missing measurements prevent PASS/FAIL. ERROR uses the HTTP failure
+channel; a successful 200 response never disguises an operational failure. All
+four statuses remain in the shared schema.
 
-Sources implement `EnvironmentalSource` and return `EnvironmentalEvent[]`.
-PRODES, DETER and MapBiomas are possible implementations of the same abstraction.
+## Coverage and sources
 
-TODO — research decision required: authoritative roles, real endpoints/layers,
-temporal attributes, payload mappings, versions, licensing, WFS filters, paging,
-spatial and temporal coverage, completeness, update cadence and limitations.
+PRODES Amazon and DETER Amazon are queried by default, with explicit source
+selection through configuration. The prototype does not claim full coverage of
+Mato Grosso, Cerrado/Pantanal, cloudy periods, or unpublished intervals. Areas
+from the two sources are not summed as a deduplicated union, and a failing source
+is not silently replaced by the other. Raw pages, parameters, retrieval times,
+and hashes are preserved. Non-transactional pagination remains a limitation.
 
-## Geometry normalization
+## Tests and approval
 
-Node orchestrates; PostGIS performs geospatial computation.
+Cases A–D and annual/monthly/daily tests exercise the proposal with synthetic
+sources whose coverage is sufficient, through explicit injection of
+`evaluateDecisionProposal`. They do not establish environmental validity or
+scientific approval. API tests verify DRAFT behavior and the distinction between
+insufficient data and operational failure. After approval, activation requires a
+reviewed code change referencing the approval and updating production tests.
 
-TODO — research decision required: validation versus repair, normalization,
-ring closure/orientation, multipart/empty geometries, dimensionality and precision.
+## Researcher approval record
 
-## CRS
+| Decision                                                      | Available proposal / evidence                                  | Status         |
+| ------------------------------------------------------------- | -------------------------------------------------------------- | -------------- |
+| Semantics of view_date, image_date, year, and event classes   | WFS profiles and temporal interpretation above                 | Pending        |
+| Coverage needed for PASS and source selection by biome/period | Profiles, limitations, and coverage=unknown                    | Pending        |
+| Inclusive cutoff, intervals, and status precedence            | Decision table and proposal tests                              | Pending        |
+| Topology/CRS, boundaries, and threshold                       | PostGIS experiments and geometry-crs-policy.md                 | Pending        |
+| Automatic repair                                              | Keep disabled; ST_MakeValid changes the type in the experiment | Not authorized |
+| Responsible researcher, date, and approval reference          | Record with the accepted scope                                 | Not provided   |
 
-TODO — research decision required: source CRS interpretation and processing CRS
-for Mato Grosso; units, transformations, distortion and reproducibility checks.
-No processing SRID is selected in the implementation.
-
-## Temporal rule
-
-The input uses a calendar date. Event values retain their source precision, which
-may be day, month, year or unknown; an event may have no date.
-
-TODO — research decision required: meaning of each source's temporal field, cutoff
-inclusivity, time zones, event without date, annual observations and mixed precision.
-
-## Spatial rule
-
-The repository boundary exposes intersection existence, area in square metres and
-percentage. These outputs have no implementation until their semantics are defined.
-
-TODO — research decision required: meaningful minimum intersection, boundary contact,
-precision, percentage denominator, zero-area inputs and overlapping-event aggregation.
-
-## Decision rule
-
-Available status vocabulary: PASS, FAIL, INCONCLUSIVE, ERROR.
-
-TODO — research decision required: JADE-ENV-0.1 mapping from spatial/temporal inputs,
-source roles and availability to outcomes. The four skipped synthetic scenarios
-are initial hypotheses, not adopted rules. Distinguish incomplete data, unavailable
-sources and execution errors from environmental findings.
-
-## Evidence generation
-
-Structurally known: a versioned manifest bridges environmental processing and
-attestation; SHA-256 hashes bytes selected by an explicit canonicalization strategy.
-
-TODO — research decision required: exact manifest content, provenance, input/source
-hash representations, canonicalization, completeness proofs, evidence storage,
-retrieval and verification. Evaluate any final on-chain subset jointly.
-
-## Known limitations
-
-No live source mapping, geospatial processing policy or decision methodology is
-implemented. No canonicalization, evidence storage, Stellar submission or long-term
-TTL strategy is implemented. Synthetic unit tests do not validate scientific accuracy.
-
-TODO — research decision required: empirical source limitations, false positive/
-negative behavior, uncertainty, precision and applicability of eventual results.
-
-## Versioning
-
-Current structural identifiers: methodology `JADE-ENV` / `0.1`, manifest
-`jade-evidence/0.1`. They label draft integration contracts.
-
-TODO — research decision required: approval and release criteria, version changes,
-dataset/version pinning, migration, comparison and reproducibility requirements.
+The activity plan requires these decisions with the researcher. This proposal is
+ready for review; it does not replace approval, and PASS is not a legal compliance
+conclusion.

@@ -1,16 +1,29 @@
-export type { EnvironmentalEvent } from './domain/environmental-event.js';
-export type { ValidationInput } from './domain/validation-input.js';
 export type {
+  EnvironmentalEvent,
+  ValidationInput,
   ValidationResult,
   ValidationStatus,
-} from './domain/validation-result.js';
+} from '@jade/schemas';
 export { EnvironmentalSourceUnavailableError } from './sources/environmental-source.js';
-export type { EnvironmentalSource } from './sources/environmental-source.js';
+export type {
+  EnvironmentalSource,
+  EnvironmentalSourceResult,
+  SourcePageEvidence,
+} from './sources/environmental-source.js';
+export type { TerraBrasilisDataset } from './sources/terrabrasilis.source.js';
 export {
   TerraBrasilisSource,
-  buildGenericWfsRequest,
+  PRODES_ENDPOINT,
+  DETER_ENDPOINT,
+  PRODES_LAYER,
+  DETER_LAYER,
+  WFS_VERSION,
+  PROCESSING_CRS,
 } from './sources/terrabrasilis.source.js';
-export { decideEnvironmentalStatus } from './validation/decision-rule.js';
+export {
+  decideEnvironmentalStatus,
+  evaluateDecisionProposal,
+} from './validation/decision-rule.js';
 export type {
   DecisionInput,
   DecisionRule,

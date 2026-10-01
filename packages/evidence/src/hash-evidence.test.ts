@@ -3,9 +3,13 @@ import {
   ResearchNotImplementedError,
   type EvidenceManifestV01,
 } from '@jade/schemas';
-import { hashEvidence } from './hash-evidence.js';
-import { canonicalizeEvidence } from './canonicalize-evidence.js';
-import { jcsEvidenceCanonicalizer } from './jcs-canonicalizer.js';
+import {
+  canonicalizeEvidence,
+  hashEvidence,
+  jcsEvidenceCanonicalizer,
+  EvidenceManifestV01Schema,
+} from '@jade/evidence';
+import { EvidenceManifestV01Schema as schema } from '@jade/schemas';
 
 const manifest: EvidenceManifestV01 = {
   schema: 'jade-evidence/0.1',
@@ -33,7 +37,6 @@ it('refuses hashing without an explicit canonicalization strategy', () => {
 });
 
 it('hashes the exact supplied bytes with the SHA-256 known-answer vector', () => {
-  // Transport test only: these bytes are intentionally not a manifest encoding.
   const testOnlyCanonicalizer = vi.fn(() => Buffer.from('abc', 'utf8'));
   expect(hashEvidence(manifest, testOnlyCanonicalizer)).toBe(
     'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',
@@ -95,4 +98,8 @@ it('hashes end-to-end with the real JCS canonicalizer against a pinned vector', 
   expect(hashEvidence(fullManifest, jcsEvidenceCanonicalizer)).toBe(
     '4d66802bb1d8f83066123d2d86468a0924c0d384b1a542b658423de4f6eea0c4',
   );
+});
+
+it('preserves the public schema re-export', () => {
+  expect(EvidenceManifestV01Schema).toBe(schema);
 });

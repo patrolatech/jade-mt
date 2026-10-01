@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { GeometryRepository } from '@jade/database';
+import { InvalidGeometryError, type GeometryRepository } from '@jade/database';
 import {
   ResearchNotImplementedError,
   type EnvironmentalEvent,
+  type SourceReport,
   type Geometry,
   type ValidationInput,
 } from '@jade/schemas';
@@ -11,7 +12,10 @@ import {
   type EnvironmentalSource,
 } from '../sources/environmental-source.js';
 import { validateEnvironmentalOrigin } from './validate-environmental-origin.js';
-import { decideEnvironmentalStatus } from './decision-rule.js';
+import {
+  decideEnvironmentalStatus,
+  evaluateDecisionProposal,
+} from './decision-rule.js';
 
 const property: Geometry = {
   type: 'Polygon',
@@ -65,16 +69,36 @@ const event = (
   geometry,
   observedAt,
   temporalPrecision: 'day',
+  temporalBasis: 'occurrence',
 });
+const sources: SourceReport[] = [
+  {
+    provider: 'synthetic',
+    dataset: 'fixture',
+    layer: 'fixture',
+    crs: 'EPSG:4326',
+    cutoffDate: input.cutoffDate,
+    datasetVersion: 'test',
+    matchedEvents: 0,
+    pages: [],
+    coverage: {
+      status: 'sufficient',
+      reason: 'Synthetic complete test universe',
+    },
+  },
+];
 const sourceFor = (events: EnvironmentalEvent[]): EnvironmentalSource => ({
-  fetchEvents: vi.fn(async () => events),
+  fetchEvents: vi.fn(async () => ({ events, sources })),
 });
-const repositoryFor = (intersectionExists: boolean): GeometryRepository => ({
-  // Deliberate measurements supplied by the fixture, never geographic calculations.
+const repositoryFor = (
+  intersectionExists: boolean,
+  areaM2: number = 20,
+): GeometryRepository => ({
+  validateProperty: vi.fn(async () => {}),
   analyzeIntersection: vi.fn(async () => ({
     intersectionExists,
-    intersectionAreaM2: intersectionExists ? 1 : 0,
-    intersectionPercentage: intersectionExists ? 25 : 0,
+    intersectionAreaM2: intersectionExists ? areaM2 : 0,
+    intersectionPercentage: intersectionExists ? (areaM2 > 0 ? 25 : 0) : 0,
   })),
 });
 
@@ -93,6 +117,7 @@ describe('orchestration boundaries', () => {
       geometry: property,
       cutoffDate: new Date('2020-12-31T00:00:00Z'),
     });
+    expect(geometryRepository.validateProperty).toHaveBeenCalledWith(property);
     expect(geometryRepository.analyzeIntersection).toHaveBeenCalledWith({
       property,
       event: overlap,
@@ -101,6 +126,7 @@ describe('orchestration boundaries', () => {
       input,
       events,
       eventAnalyses: result.eventAnalyses,
+      sources,
     });
     expect(result).toMatchObject({
       validationId,
@@ -110,15 +136,15 @@ describe('orchestration boundaries', () => {
     });
   });
 
-  it('does not assume no events means PASS when the real decision rule is pending', async () => {
+  it('keeps the production result inconclusive pending methodology approval', async () => {
     const geometryRepository = repositoryFor(false);
-    await expect(
-      validateEnvironmentalOrigin(
-        input,
-        { source: sourceFor([]), geometryRepository },
-        validationId,
-      ),
-    ).rejects.toThrow(ResearchNotImplementedError);
+    const result = await validateEnvironmentalOrigin(
+      input,
+      { source: sourceFor([]), geometryRepository },
+      validationId,
+    );
+    expect(result.status).toBe('INCONCLUSIVE');
+    expect(result.eventsFound).toBe(0);
     expect(geometryRepository.analyzeIntersection).not.toHaveBeenCalled();
   });
 
@@ -144,6 +170,7 @@ describe('orchestration boundaries', () => {
   it('does not classify an incomplete geometry analysis', async () => {
     const decisionRule = vi.fn(decideEnvironmentalStatus);
     const geometryRepository: GeometryRepository = {
+      validateProperty: vi.fn(async () => {}),
       analyzeIntersection: vi
         .fn()
         .mockRejectedValue(new ResearchNotImplementedError('geometry policy')),
@@ -161,13 +188,67 @@ describe('orchestration boundaries', () => {
     ).rejects.toThrow(ResearchNotImplementedError);
     expect(decisionRule).not.toHaveBeenCalled();
   });
-});
 
-describe('JADE-ENV-0.1 research hypotheses — enable after methodology review', () => {
-  it.skip('A — no intersection → PASS (TODO: source completeness and spatial rule)', async () => {
+  it('rejects an invalid property before fetching any events, even when the source would return empty', async () => {
+    const source = sourceFor([]);
+    const geometryRepository = repositoryFor(false);
+    vi.mocked(geometryRepository.validateProperty).mockRejectedValue(
+      new InvalidGeometryError('property', 'Self-intersection'),
+    );
+    await expect(
+      validateEnvironmentalOrigin(
+        input,
+        { source, geometryRepository },
+        validationId,
+      ),
+    ).rejects.toThrow(InvalidGeometryError);
+    expect(source.fetchEvents).not.toHaveBeenCalled();
+    expect(geometryRepository.analyzeIntersection).not.toHaveBeenCalled();
+  });
+
+  it('keeps valid measurements while reporting invalid events as inconclusive', async () => {
+    const geometryRepository = repositoryFor(true, 20);
+    vi.mocked(geometryRepository.analyzeIntersection).mockRejectedValueOnce(
+      new InvalidGeometryError('event', 'Self-intersection'),
+    );
+    const decisionRule = vi.fn(decideEnvironmentalStatus);
     const result = await validateEnvironmentalOrigin(
       input,
       {
+        source: sourceFor([
+          { ...event(overlap), id: 'invalid' },
+          { ...event(overlap), id: 'valid' },
+        ]),
+        geometryRepository,
+        decisionRule,
+      },
+      validationId,
+    );
+    expect(result).toMatchObject({
+      status: 'INCONCLUSIVE',
+      eventsFound: 2,
+      issues: [
+        {
+          code: 'INVALID_EVENT_GEOMETRY',
+          eventId: 'invalid',
+          message: 'Self-intersection',
+        },
+      ],
+      eventAnalyses: [
+        { eventId: 'valid', analysis: { intersectionAreaM2: 20 } },
+      ],
+    });
+    expect(decisionRule).not.toHaveBeenCalled();
+    expect(geometryRepository.analyzeIntersection).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('Executable proposal A–D with synthetic complete coverage; not scientific approval', () => {
+  it('A — no intersection → PASS', async () => {
+    const result = await validateEnvironmentalOrigin(
+      input,
+      {
+        decisionRule: evaluateDecisionProposal,
         source: sourceFor([event(disjoint)]),
         geometryRepository: repositoryFor(false),
       },
@@ -175,10 +256,11 @@ describe('JADE-ENV-0.1 research hypotheses — enable after methodology review',
     );
     expect(result.status).toBe('PASS');
   });
-  it.skip('B — intersection before cutoff → initially PASS (TODO: temporal rule)', async () => {
+  it('B — intersection before cutoff → PASS', async () => {
     const result = await validateEnvironmentalOrigin(
       input,
       {
+        decisionRule: evaluateDecisionProposal,
         source: sourceFor([event(overlap, '2020-01-01')]),
         geometryRepository: repositoryFor(true),
       },
@@ -186,10 +268,11 @@ describe('JADE-ENV-0.1 research hypotheses — enable after methodology review',
     );
     expect(result.status).toBe('PASS');
   });
-  it.skip('C — intersection after cutoff → FAIL (TODO: source hierarchy and threshold)', async () => {
+  it('C — intersection after cutoff → FAIL', async () => {
     const result = await validateEnvironmentalOrigin(
       input,
       {
+        decisionRule: evaluateDecisionProposal,
         source: sourceFor([event(overlap)]),
         geometryRepository: repositoryFor(true),
       },
@@ -197,17 +280,18 @@ describe('JADE-ENV-0.1 research hypotheses — enable after methodology review',
     );
     expect(result.status).toBe('FAIL');
   });
-  it.skip('D — source unavailable → INCONCLUSIVE (TODO: failure-to-status policy)', async () => {
+  it('D — source unavailable → throws EnvironmentalSourceUnavailableError', async () => {
     const source: EnvironmentalSource = {
       fetchEvents: vi
         .fn()
         .mockRejectedValue(new EnvironmentalSourceUnavailableError()),
     };
-    const result = await validateEnvironmentalOrigin(
-      input,
-      { source, geometryRepository: repositoryFor(false) },
-      validationId,
-    );
-    expect(result.status).toBe('INCONCLUSIVE');
+    await expect(
+      validateEnvironmentalOrigin(
+        input,
+        { source, geometryRepository: repositoryFor(false) },
+        validationId,
+      ),
+    ).rejects.toThrow(EnvironmentalSourceUnavailableError);
   });
 });

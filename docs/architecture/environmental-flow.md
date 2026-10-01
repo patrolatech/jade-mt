@@ -1,67 +1,55 @@
-# Environmental screening to attestation
+# Environmental validation flow
 
 ```mermaid
 flowchart TD
-  A[Polygon / ValidationInput] --> B[EnvironmentalSource.fetchEvents]
-  B --> C[EnvironmentalEvent list]
-  C --> D[GeometryRepository.analyzeIntersection per event]
-  D --> E[JADE-ENV-0.1 decision rule]
-  E --> F[ValidationResult]
-  F -. future evidence composition .-> G[EvidenceManifestV01]
-  G --> H[canonicalizeEvidence: explicit strategy required]
-  H --> I[SHA-256 / evidenceHash]
-  I -. future Stellar client .-> J[Soroban attest]
+  A[Validate input geometry] --> B[Create running validation]
+  B --> C[Fetch and archive WFS pages]
+  C --> D[Measure each event in PostGIS]
+  D --> E[Apply decision rule]
+  E --> F[Commit history and exact response]
+  F --> G[Return ValidationResult]
 ```
 
-`validateEnvironmentalOrigin` passes the input geometry and date to a source,
-analyzes each event through `GeometryRepository`, and forwards both the original
-events and per-event measurements to a separate decision rule. No source-specific
-layer names, source hierarchy or blockchain types appear in the workflow.
+`validateEnvironmentalOrigin` coordinates source retrieval, geometry analysis, and
+the decision rule. The TerraBrasilis adapter supplies events, coverage assessments,
+and page receipts. It preserves date precision, requests EPSG:4326, and rejects
+incomplete pagination. The cutoff travels as a UTC date; its interpretation is
+specified in [JADE-ENV-0.1](../methodology/JADE-ENV-0.1.md).
 
-The transport Date uses UTC midnight for the input calendar date. This does not
-select cutoff inclusivity, source timestamp semantics, or a scientific temporal
-rule. Event date values retain their stated precision and may be null.
+PostGIS checks geometry without repair and measures intersections in m². The
+[geometry policy](../research/geometry-crs-policy.md) defines the operations and
+limitations. The default decision remains INCONCLUSIVE while the methodology is
+draft; proposal tests use an explicitly injected decision rule.
 
-The TerraBrasilis adapter has a generic native-fetch transport method returning
-`unknown`. Its high-level `fetchEvents` deliberately throws before using it until
-mapping, spatial/temporal filters and completeness/pagination are researched.
-There are no hardcoded government endpoints or layers.
+The API commits input, source references, measurements, processing versions, and
+response before returning success. Failures retain their error and any archived
+receipts. GET reads saved history without calling WFS. See the
+[database model](database-model.md) for transaction and recovery details.
 
-The PostGIS adapter also throws until its SQL and policy exist. Its return type
-states the measurements that callers need, not how those measurements are to be
-computed. The decision rule throws even for an empty event array. A mock source,
-mock geometry repository and explicit test decision make the full orchestration
-executable in isolation without doing the interns' research.
+## Evidence and attestation
 
-## Evidence boundary
+| Hash           | Subject                                          | Status                                                                     |
+| -------------- | ------------------------------------------------ | -------------------------------------------------------------------------- |
+| `payloadHash`  | One page's Fetch response bytes, before decoding | Implemented; archived and verified per page                                |
+| `geometryHash` | Original submitted geometry                      | JCS (RFC 8785); closed 2D WGS84 Polygon/MultiPolygon for validation inputs |
+| `evidenceHash` | Complete validated manifest                      | JCS (RFC 8785), supplied explicitly                                        |
 
-`EvidenceManifestV01` is provisional. Its methodology identifier is a version label,
-not a claim that the method has been implemented or approved. An evidence manifest
-must eventually carry provenance sufficient to reproduce a screening result.
+See [hashing contract](../research/evidence-hashing.md) and
+[manifest fields](../research/evidence-manifest-v01.md). Hash entrypoints require
+schema-validated input; TypeScript types alone do not validate JSON.
+`hashEvidence(manifest, jcsEvidenceCanonicalizer)` hashes the strategy's exact
+bytes with SHA-256. Omitting the strategy throws. The manifest excludes its own
+hash. Unmeasured areas are null; per-event areas cannot be summed without an
+overlap policy. Sources are represented per page in deterministic dataset/page
+order, preserving every receipt and its separately archived payload.
 
-| Hash         | Intended subject                                                   | Resolution                                                                                                                                        |
-| ------------ | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| geometryHash | submitted geometry, unnormalized, as validated by `GeometrySchema` | JCS canonical bytes of the geometry, WGS84 implied by GeoJSON; precision/normalization still a GIS decision — `docs/research/evidence-hashing.md` |
-| payloadHash  | one retrieved source response's raw bytes                          | raw bytes, pre-parsing, pages concatenated in fetch order — `docs/research/evidence-hashing.md`                                                   |
-| evidenceHash | canonical bytes of the complete evidence manifest                  | RFC 8785 (JCS) over the full `EvidenceManifestV01` — `docs/research/evidence-hashing.md`                                                          |
+Hashes require retention of the original input, payloads, receipts, and code
+versions off-chain. A later fetch may differ; it cannot replace the archive.
+`evidenceUri` is an optional locator, not a retention mechanism. Back up the
+archive and database together and define auditor access separately.
 
-These hashes are distinct and must never substitute for one another. The manifest
-does not contain its own evidenceHash. SHA-256 returns lowercase 64-character hex;
-the initial contract accepts `BytesN<32>`. The future Stellar adapter must convert
-and validate the representation explicitly.
-
-`hashEvidence(manifest, canonicalizer)` calls the canonicalizer and hashes its exact
-bytes with Node `node:crypto`. Omitting the strategy throws; no `JSON.stringify`
-fallback exists. `jcsEvidenceCanonicalizer` (`packages/evidence/src/jcs-canonicalizer.ts`)
-is the supplied RFC 8785 implementation, passed explicitly by callers. `hashGeometry`
-and `hashPayload` (`packages/evidence/src/`) implement `geometryHash` and
-`payloadHash` the same way, ready for the future manifest-composition layer to call.
-
-Manifest summary areas may be null when unmeasured. Zero requires a measurement.
-Per-event areas cannot automatically be summed because events may overlap;
-aggregate/union semantics are a research decision. The initial app does not
-construct manifests or send on-chain transactions.
-
-The contract validates authorization and preserves an attestation hash/result. It
-does not independently validate source truth, environmental conclusions or legal
-compliance. Revocation changes status while preserving the original evidence hash.
+The API does not yet construct manifests or submit transactions. The contract
+stores an authorized attestation hash/result and permits revocation; the future
+Stellar adapter must convert 64-character hex hashes to `BytesN<32>`. Contract
+storage does not verify environmental conclusions. Research activities 3–4
+(attestation design, storage/TTL and costs) remain pending.

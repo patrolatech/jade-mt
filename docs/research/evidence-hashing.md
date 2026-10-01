@@ -1,115 +1,111 @@
 # Evidence hashing and canonicalization strategy
 
-Estagiário 1 (Blockchain/Evidence), etapa 16–30 Set — Atividade 2.
+Blockchain/Evidence research, activities 1–2. This integration contract preserves
+GIS page receipts and the evidence hashing primitives. It does not approve the
+scientific methodology or implement attestation/storage/TTL research (activities
+3–4). The API still returns INCONCLUSIVE by default and does not build manifests.
 
-Builds on `docs/research/evidence-manifest-v01.md` (the `EvidenceManifestV01`
-field set is closed). This document defines the exact bytes behind each of
-the three distinct SHA-256 hashes the system uses, and implements them.
+The three SHA-256 digests are distinct. They use lowercase 64-character hex.
+The manifest excludes its own `evidenceHash`; the future Stellar adapter must
+explicitly convert the digest to `BytesN<32>`.
 
-> **These hashes are distinct and must never substitute for one another.**
-> The manifest does not contain its own `evidenceHash` — it is computed
-> externally by `hashEvidence` and only the resulting digest is submitted
-> on-chain as `evidence_hash`.
+## Validation preconditions
 
-## Scope boundary
-
-CRS, geometry normalization, coordinate precision, ring closure/orientation,
-and WFS payload → `EnvironmentalEvent` mapping are explicitly the GIS
-intern's open research questions (`packages/database/src/postgis-geometry-repository.ts`,
-`TODO(intern-gis)`; `docs/methodology/JADE-ENV-0.1.md`, "Geometry
-normalization" and "CRS" sections, both still TODO). This activity does not
-decide those semantics — it defines how to hash what already exists
-(structurally-validated geometry, raw fetched bytes), and records the
-GIS-owned gaps as open questions below rather than as a blocker.
+These hashing entrypoints do not perform schema validation. Before calling
+`canonicalizeEvidence`, `jcsEvidenceCanonicalizer`, or `hashEvidence`, callers
+must validate external JSON against `EvidenceManifestV01Schema`, including
+registered date, date-time and URI formats. Extra object fields are forbidden.
+Before `hashGeometry`, validate against `GeometrySchema`. For validation inputs,
+also enforce `PolygonGeometrySchema`, `isPolygonGeometry` (closed rings), and
+the input position limit. TypeScript types are not runtime validation.
 
 ## `geometryHash`
 
-| Question                 | Answer                                                                                                                                                                                                                                                                    |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Which geometry is hashed | `ValidationInput.geometry` exactly as submitted, after passing `GeometrySchema` structural validation (`packages/schemas/src/geometry.ts`)                                                                                                                                |
-| Original or normalized   | **Original.** No normalization is implemented anywhere in the repo today; deciding one now would preempt the GIS methodology's own open decision.                                                                                                                         |
-| Representation           | Canonical JSON (JCS, RFC 8785 — same strategy as `evidenceHash`, see below) of the GeoJSON geometry object                                                                                                                                                                |
-| CRS                      | GeoJSON (RFC 7946) implies WGS84 when no `crs` member is present, and the schema has no `crs` field — this fixes the CRS of the _hashed representation_ unambiguously. The _processing_ CRS used by PostGIS intersection analysis is a separate, still-open GIS question. |
-| Encoding                 | UTF-8 bytes of the canonical JSON text                                                                                                                                                                                                                                    |
-| Precision                | Coordinates are hashed exactly as received, with no rounding. A coordinate-precision policy is a GIS decision, not made here.                                                                                                                                             |
+SHA-256 of UTF-8 JCS (RFC 8785) JSON for the original submitted geometry.
+Object keys are sorted; coordinates, ring order, holes, and components retain
+their exact order and precision. No repair, reprojection, rounding, or Unicode
+normalization is applied. The API accepts closed 2D Polygon/MultiPolygon in
+WGS84 (EPSG:4326) longitude/latitude. Generic geometry hashing also supports
+structurally valid GeoJSON such as Point; this does not broaden API acceptance.
 
-Implemented in `packages/evidence/src/hash-geometry.ts` as
-`hashGeometry(geometry: Geometry): string`.
+Processing CRS and area operations are documented in
+[geometry policy](geometry-crs-policy.md). Their scientific approval and any
+future normalization/precision policy remain open. Hashing original geometry
+must not be confused with approving processing semantics.
+
+Implemented by `hashGeometry(geometry: Geometry)`.
 
 ## `payloadHash`
 
-| Question                    | Answer                                                                                                                                                                                                                                                          |
-| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Which payload               | The raw bytes of one retrieved source response, one hash per `sources[]` entry — not an aggregate across sources                                                                                                                                                |
-| Pagination                  | Pages are concatenated as raw bytes in the exact order they were requested/received; never reordered or merged as JSON                                                                                                                                          |
-| Page order                  | Fetch order (e.g. ascending `startIndex`/page number used in the WFS request)                                                                                                                                                                                   |
-| Raw vs. transformed         | **Raw.** The response body bytes are hashed before any parsing or mapping to `EnvironmentalEvent`. Mapping logic can have bugs; the point of `payloadHash` is independent re-verification against the original source, which a transformed hash cannot provide. |
-| What stays outside the hash | HTTP headers, retry/timing metadata, and the manifest's own `provider`/`dataset`/`retrievedAt`/etc. fields (those are covered by `evidenceHash` via the manifest, not by `payloadHash`)                                                                         |
+SHA-256 of **one page's bytes returned by Fetch `response.arrayBuffer()`**,
+before text decoding, JSON parsing or event mapping. Fetch may already decompress
+HTTP content encoding; these are response body bytes, not wire framing or headers.
+Do not concatenate pages or hash mapped events. Formatting, a UTF-8 BOM, and any
+byte change affect this digest. Empty pages are still retained and hashed.
 
-Implemented in `packages/evidence/src/hash-payload.ts` as
-`hashPayload(bytes: Uint8Array): string` — a direct SHA-256 of the given
-bytes, deliberately without canonicalization, since transforming raw bytes
-before hashing would defeat the point above.
+The TerraBrasilis adapter captures `bodyBytes`, decodes a separate `body` string
+for parsing, and archives the bytes and receipt before mapping. Event provenance
+uses the corresponding page hash and `/features/N` locator. Receipt fields
+(request URL/method/body, retrieval time, returned count) preserve page identity.
+`SourceReport.pages` is ordered by ascending requested `startIndex`; source
+reports preserve configured dataset order (default PRODES, DETER), regardless
+of concurrent request completion. Do not derive order from archive filenames
+or callback completion time.
+
+A future manifest composer emits one `sources[]` entry **per page**, copying
+provider, dataset, datasetVersion, layer from its report and retrievedAt and
+payloadHash from its page, flattening report order then page order. Repeated
+provider/dataset entries are intentional. The manifest's existing shape is
+unchanged; full request receipts stay off-chain. No aggregate source digest is
+introduced. `hashPayload(bytes: Uint8Array)` hashes exactly the supplied bytes.
+
+Compatibility: older `terrabrasilis-wfs/0.2` captures hashed UTF-8 re-encoded
+`response.text()`. New captures use `terrabrasilis-wfs/0.3`. Plain valid UTF-8
+without a BOM has the same digest. Never relabel or recompute historical receipts;
+a missing original byte sequence cannot be recovered from its old digest.
+Custom/legacy `SourcePageEvidence` producers may omit `bodyBytes`; the archive
+then preserves UTF-8 bytes of `body` and verifies the supplied digest. Raw-byte
+claims apply only when original bytes were captured. Replay reads archive bytes
+without a text round-trip and verifies the original receipt before serving them.
 
 ## `evidenceHash`
 
-| Question                  | Answer                                                                                                                                                                                                                                                           |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Which object              | The complete `EvidenceManifestV01`, all schema-defined fields (including `evidenceUri`/`implementationVersion` from Atividade 1)                                                                                                                                 |
-| Which fields              | All of them — `additionalProperties: false` on every object in the schema already guarantees a closed set, so validating against the schema before hashing is sufficient                                                                                         |
-| Canonicalization standard | **JSON Canonicalization Scheme — RFC 8785 (JCS)**, not an implicit `JSON.stringify()`                                                                                                                                                                            |
-| Property order            | JCS sorts object keys by UTF-16 code unit — deterministic regardless of the source object's insertion order                                                                                                                                                      |
-| Numbers                   | ECMAScript `Number::toString`, the same algorithm `JSON.stringify` uses in JS engines. Safe here because every numeric field is already schema-validated (`Type.Number`/`Type.Integer` with `minimum`/`maximum`) before hashing — `NaN`/`Infinity` cannot occur. |
-| Lists                     | **Not reordered** — JCS only sorts object keys, never array elements. `sources[]` keeps its original order, which is semantically meaningful (retrieval order).                                                                                                  |
-| `null`                    | Preserved as-is. This matters because the schema deliberately uses `null` for "not measured" (e.g. `analysis.intersectionAreaM2`); it must stay distinguishable from a real value in the hash.                                                                   |
-| Dates                     | Hashed as the plain ISO-8601 strings the schema already validates (`cutoffDate`, `retrievedAt`) — no extra date canonicalization invented.                                                                                                                       |
-| Unicode                   | Canonical text is UTF-8 before hashing (JCS's own requirement). Unicode normalization (NFC/NFKC) of free-text fields like `input.commodity` is not applied — recorded as a low-risk open question, not a blocker.                                                |
+SHA-256 of UTF-8 RFC 8785 JCS JSON for the complete validated manifest, including
+optional `evidenceUri`/`implementationVersion` when present. Keys are sorted by
+UTF-16 code units; numbers use ECMAScript serialization. Array order is preserved,
+so exchanging pages or sources changes the digest. `null`, zero and absent
+optional properties remain distinct. Date strings are hashed as validated;
+Unicode normalization is not applied.
 
-**Why JCS specifically**: it is a formal standard with implementations in
-multiple languages, so a third-party auditor — or a future Rust/Soroban-side
-verifier — can reproduce the same hash without depending on this Node
-codebase's internal object key insertion order. This directly avoids the
-"don't just apply `JSON.stringify()` implicitly" requirement.
+`hashEvidence(manifest, jcsEvidenceCanonicalizer)` explicitly supplies the
+canonicalizer; omitting it throws `ResearchNotImplementedError`. The supplied
+implementation uses `canonicalize`, pinned at 5.1.0. Custom canonicalizers retain
+the existing API and must define their own reproducible byte contract.
 
-Implemented in `packages/evidence/src/jcs-canonicalizer.ts`, exporting
-`jcsEvidenceCanonicalizer: EvidenceCanonicalizer`, built on the
-[`canonicalize`](https://github.com/erdtman/canonicalize) package (RFC 8785
-reference implementation, zero dependencies, pinned exact version
-`5.1.0` in `packages/evidence/package.json`). It is passed explicitly by
-callers — `hashEvidence(manifest, jcsEvidenceCanonicalizer)` — preserving
-`canonicalizeEvidence`'s original design ("no implicit fallback").
+## Retention and audit
 
-## Known vectors and proofs
+A digest proves equality to bytes provided by an auditor; it cannot reconstruct
+those bytes or guarantee that an upstream service will return them again.
+Preserve original input geometry, each payload, full request receipts, manifest,
+and matching implementation/runtime versions off-chain. Back up the archive and
+PostgreSQL together. `evidenceUri` is an optional pointer; absent/null does not
+remove retention or controlled auditor-access requirements. GET validation
+history currently returns metadata, not raw archive files. Retention duration,
+storage backend and retrieval authorization remain operational decisions.
 
-All in `packages/evidence/src/`:
+## Verification
 
-- `jcs-canonicalizer.test.ts` — pins the canonical JSON bytes for a full
-  example manifest; proves that rebuilding the same manifest with every
-  object's keys inserted in reverse order produces **identical** bytes;
-  proves that changing `result` produces **different** bytes; proves array
-  order is preserved (source order swap changes the hash) and that `null`
-  stays distinguishable from `0`.
-- `hash-geometry.test.ts` — known vector for a `Point` geometry; proves key
-  order doesn't matter and coordinate changes do.
-- `hash-payload.test.ts` — standard SHA-256 known-answer vectors
-  (`sha256('')`, `sha256('abc')`) applied to raw bytes; proves whitespace/
-  formatting changes the hash (no transformation is applied) and that page
-  concatenation order matters.
-- `hash-evidence.test.ts` — end-to-end: a full manifest hashed through
-  `hashEvidence(manifest, jcsEvidenceCanonicalizer)` against a pinned SHA-256
-  digest.
+Tests pin SHA-256 and JCS vectors, key-order invariance, coordinate/content
+sensitivity, optional-field compatibility, null/zero distinction and array order.
+Integration regression tests exercise BOM bytes, per-page receipt/archive hashes,
+deterministic page order, and replay from archived bytes with no upstream fetch.
+Schema tests verify commodity bounds and strict fields with format validation.
+These synthetic tests do not establish scientific accuracy or live coverage.
 
-## Open questions carried forward
+## Open research
 
-- Coordinate precision/rounding policy for `geometryHash` — GIS decision.
-- Processing CRS for PostGIS intersection analysis (distinct from the fixed
-  WGS84 assumption used for hashing) — GIS decision,
-  `docs/research/open-questions.md`.
-- Unicode normalization (NFC/NFKC) of free-text manifest fields such as
-  `input.commodity` — low risk, not addressed here.
-- Real WFS pagination/mapping implementation in
-  `packages/environmental-oracle/src/sources/terrabrasilis.source.ts` still
-  throws `ResearchNotImplementedError` — this activity only defines and
-  implements the hashing primitives (`hashGeometry`, `hashPayload`,
-  `jcsEvidenceCanonicalizer`) that the future manifest-composition layer will
-  call once fetching/mapping exists.
+- Scientific approval of processing/precision and any future normalization.
+- Unicode normalization of free-text fields.
+- Manifest composition and publication integration.
+- Attestation design, storage/TTL, restoration and costs (activities 3–4).
+- Retention policy, durable backend, and controlled auditor access.

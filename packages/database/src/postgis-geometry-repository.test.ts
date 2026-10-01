@@ -1,19 +1,38 @@
 import { expect, it } from 'vitest';
-import { ResearchNotImplementedError } from '@jade/schemas';
 import { createDatabasePool } from './pool.js';
 import { PostgisGeometryRepository } from './postgis-geometry-repository.js';
+import { InvalidGeometryError } from './geometry-repository.js';
 
-it('cannot return measurements before the geospatial policy exists', async () => {
+it('rejects unsupported property types before opening a database connection', async () => {
   const pool = createDatabasePool(
     'postgresql://unused:unused@example.invalid/unused',
   );
   try {
     await expect(
-      new PostgisGeometryRepository(pool).analyzeIntersection({
-        property: { type: 'Point', coordinates: [0, 0] },
-        event: { type: 'Point', coordinates: [0, 0] },
+      new PostgisGeometryRepository(pool).validateProperty({
+        type: 'Point',
+        coordinates: [0, 0],
       }),
-    ).rejects.toThrow(ResearchNotImplementedError);
+    ).rejects.toThrow(InvalidGeometryError);
+  } finally {
+    await pool.end();
+  }
+});
+
+it('rejects oversized polygons before querying PostGIS', async () => {
+  const pool = createDatabasePool(
+    'postgresql://unused:unused@example.invalid/unused',
+  );
+  try {
+    await expect(
+      new PostgisGeometryRepository(pool).validateProperty({
+        type: 'Polygon',
+        coordinates: [Array.from({ length: 5_001 }, () => [-55, -12])],
+      }),
+    ).rejects.toMatchObject({
+      name: 'InvalidGeometryError',
+      reason: expect.stringContaining('5000'),
+    });
   } finally {
     await pool.end();
   }

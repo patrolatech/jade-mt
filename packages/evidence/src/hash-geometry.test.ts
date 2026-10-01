@@ -23,3 +23,26 @@ it('is sensitive to coordinate changes and stable across key order', () => {
   expect(hashGeometry(reorderedPoint)).toBe(hashGeometry(point));
   expect(hashGeometry(differentPoint)).not.toBe(hashGeometry(point));
 });
+
+it('preserves original closed polygon rings and their coordinate order', () => {
+  const polygon = {
+    type: 'Polygon' as const,
+    coordinates: [
+      [
+        [0, 0],
+        [1, 0],
+        [1, 1],
+        [0, 0],
+      ],
+    ],
+  };
+  expect(
+    hashGeometry({ coordinates: polygon.coordinates, type: polygon.type }),
+  ).toBe(hashGeometry(polygon));
+  expect(
+    hashGeometry({
+      ...polygon,
+      coordinates: [polygon.coordinates[0]!.toReversed()],
+    }),
+  ).not.toBe(hashGeometry(polygon));
+});
