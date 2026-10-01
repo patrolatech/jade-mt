@@ -50,10 +50,7 @@ const source = new TerraBrasilisSource({
     const requestKey = key(String(url), options?.method, options?.body ?? '');
     const page = pages.get(requestKey);
     assert.ok(page, 'Replay requested a page not present in the capture');
-    const body = await readFile(
-      join(capture, `${page.payloadHash}.json`),
-      'utf8',
-    );
+    const body = await readFile(join(capture, `${page.payloadHash}.json`));
     assert.equal(
       createHash('sha256').update(body).digest('hex'),
       page.payloadHash,

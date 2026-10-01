@@ -5,6 +5,7 @@ import {
   type EvidenceCanonicalizer,
 } from './canonicalize-evidence.js';
 
+// Precondition: manifest has passed EvidenceManifestV01Schema validation.
 export function hashEvidence(
   manifest: EvidenceManifestV01,
   canonicalizer?: EvidenceCanonicalizer,

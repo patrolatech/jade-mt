@@ -9,7 +9,11 @@ export const defaultEvidenceDirectory = fileURLToPath(
   new URL('../../../../.data/source-evidence/', import.meta.url),
 );
 
-async function writeOnce(directory: string, filename: string, content: string) {
+async function writeOnce(
+  directory: string,
+  filename: string,
+  content: Uint8Array,
+) {
   const temporary = join(directory, `.${randomUUID()}.tmp`);
   await writeFile(temporary, content, { flag: 'wx' });
   try {
@@ -23,7 +27,9 @@ async function writeOnce(directory: string, filename: string, content: string) {
         error.code === 'EEXIST'
       ))
         throw error;
-      if ((await readFile(join(directory, filename), 'utf8')) !== content)
+      if (
+        !Buffer.from(await readFile(join(directory, filename))).equals(content)
+      )
         throw new Error(
           'Existing source evidence does not match its content hash',
           { cause: error },
@@ -35,17 +41,26 @@ async function writeOnce(directory: string, filename: string, content: string) {
 }
 
 export function archiveSourcePage(directory = defaultEvidenceDirectory) {
-  return async ({ body, ...receipt }: SourcePageEvidence): Promise<void> => {
+  return async ({
+    body,
+    bodyBytes,
+    ...receipt
+  }: SourcePageEvidence): Promise<void> => {
+    const bytes = bodyBytes ?? Buffer.from(body, 'utf8');
     if (
       !/^[a-f0-9]{64}$/.test(receipt.payloadHash) ||
-      createHash('sha256').update(body).digest('hex') !== receipt.payloadHash
+      createHash('sha256').update(bytes).digest('hex') !== receipt.payloadHash
     )
       throw new Error('Source payload hash mismatch');
     await mkdir(directory, { recursive: true });
     const receiptBody = JSON.stringify(receipt, null, 2);
     const receiptHash = createHash('sha256').update(receiptBody).digest('hex');
-    await writeOnce(directory, `${receipt.payloadHash}.json`, body);
-    await writeOnce(directory, `${receiptHash}.receipt.json`, receiptBody);
+    await writeOnce(directory, `${receipt.payloadHash}.json`, bytes);
+    await writeOnce(
+      directory,
+      `${receiptHash}.receipt.json`,
+      Buffer.from(receiptBody, 'utf8'),
+    );
   };
 }
 

@@ -7,6 +7,8 @@ export interface SourcePageEvidence {
   retrievedAt: string;
   payloadHash: string;
   body: string;
+  // Exact Fetch response bytes; legacy/custom sources may supply UTF-8 text only.
+  bodyBytes?: Uint8Array;
 }
 
 export interface EnvironmentalSourceResult {

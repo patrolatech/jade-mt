@@ -134,13 +134,14 @@ for (const dataset of datasets) {
         : {}),
       signal: globalThis.AbortSignal.timeout(30_000),
     });
-    const body = await response.text();
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    const body = new TextDecoder().decode(bytes);
     if (!response.ok || /ExceptionReport/.test(body))
       throw new Error(
         `${dataset.dataset}/${name}: ${response.status} ${body.slice(0, 300)}`,
       );
     const filename = `${dataset.dataset.toLowerCase()}-${name}.${body.trimStart().startsWith('{') ? 'json' : 'xml'}`;
-    await writeFile(join(output, filename), body);
+    await writeFile(join(output, filename), bytes);
     const entry: QueryReceipt = {
       dataset: dataset.dataset,
       operation: name,
@@ -149,7 +150,7 @@ for (const dataset of datasets) {
       ...(method === 'POST' ? { requestBody: search } : {}),
       retrievedAt: new Date().toISOString(),
       httpStatus: response.status,
-      payloadHash: createHash('sha256').update(body).digest('hex'),
+      payloadHash: createHash('sha256').update(bytes).digest('hex'),
       file: filename,
     };
     if (filename.endsWith('.json')) {

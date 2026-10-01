@@ -27,7 +27,7 @@ export const PROCESSING_CRS = 'EPSG:4326';
 const PAGE_SIZE = 100;
 const MAX_EVENTS = 10_000;
 export type TerraBrasilisDataset = 'PRODES' | 'DETER';
-const ADAPTER_VERSION = 'terrabrasilis-wfs/0.2';
+const ADAPTER_VERSION = 'terrabrasilis-wfs/0.3';
 
 function polygonWkt(geometry: Geometry): string {
   if (!isPolygonGeometry(geometry)) {
@@ -164,14 +164,16 @@ export class TerraBrasilisSource implements EnvironmentalSource {
         },
       );
       if (!response.ok) throw new Error(`WFS HTTP ${response.status}`);
-      const body = await response.text();
+      const bodyBytes = new Uint8Array(await response.arrayBuffer());
+      const body = new TextDecoder().decode(bodyBytes);
       return {
         requestUrl,
         method,
         ...(requestBody ? { requestBody } : {}),
         retrievedAt: new Date().toISOString(),
-        payloadHash: createHash('sha256').update(body).digest('hex'),
+        payloadHash: createHash('sha256').update(bodyBytes).digest('hex'),
         body,
+        bodyBytes,
       };
     } catch (cause) {
       throw new EnvironmentalSourceUnavailableError({ cause });

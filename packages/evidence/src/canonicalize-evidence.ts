@@ -7,6 +7,8 @@ export type EvidenceCanonicalizer = (
   manifest: EvidenceManifestV01,
 ) => Uint8Array;
 
+// Precondition: manifest has passed EvidenceManifestV01Schema validation,
+// including date/URI formats. TypeScript types do not validate external JSON.
 export function canonicalizeEvidence(
   manifest: EvidenceManifestV01,
   canonicalizer?: EvidenceCanonicalizer,

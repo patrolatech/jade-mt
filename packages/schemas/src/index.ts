@@ -242,7 +242,11 @@ export const EvidenceManifestV01Schema = Type.Object(
     input: Type.Object(
       {
         geometryHash: Sha256Schema,
-        commodity: Type.String({ minLength: 1 }),
+        commodity: Type.String({
+          minLength: 1,
+          maxLength: 100,
+          pattern: '\\S',
+        }),
         cutoffDate: Type.String({ format: 'date' }),
       },
       { additionalProperties: false },
@@ -275,6 +279,17 @@ export const EvidenceManifestV01Schema = Type.Object(
       { additionalProperties: false },
     ),
     result: ValidationStatusSchema,
+    // Pointer to where the raw evidence bytes (geometry, source payloads) can be
+    // retrieved for audit; absent when no retrievable storage exists yet.
+    evidenceUri: Type.Optional(
+      Type.Union([Type.String({ format: 'uri' }), Type.Null()]),
+    ),
+    // Version of the oracle/evidence codebase that produced this manifest,
+    // distinct from `schema` (manifest format) and `methodology.version`
+    // (scientific rule version).
+    implementationVersion: Type.Optional(
+      Type.Union([Type.String(), Type.Null()]),
+    ),
   },
   { additionalProperties: false },
 );

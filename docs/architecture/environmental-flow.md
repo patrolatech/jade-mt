@@ -28,18 +28,28 @@ receipts. GET reads saved history without calling WFS. See the
 
 ## Evidence and attestation
 
-| Hash           | Subject                                | Status                                            |
-| -------------- | -------------------------------------- | ------------------------------------------------- |
-| `payloadHash`  | Exact retrieved source body            | Implemented; verified when archived and read      |
-| `geometryHash` | Submitted or normalized geometry bytes | Representation and normalization remain undecided |
-| `evidenceHash` | Canonical manifest bytes               | Canonicalization strategy remains undecided       |
+| Hash           | Subject                                          | Status                                                                     |
+| -------------- | ------------------------------------------------ | -------------------------------------------------------------------------- |
+| `payloadHash`  | One page's Fetch response bytes, before decoding | Implemented; archived and verified per page                                |
+| `geometryHash` | Original submitted geometry                      | JCS (RFC 8785); closed 2D WGS84 Polygon/MultiPolygon for validation inputs |
+| `evidenceHash` | Complete validated manifest                      | JCS (RFC 8785), supplied explicitly                                        |
 
-`hashEvidence(manifest, canonicalizer)` hashes the strategy's exact bytes with
-SHA-256. Omitting the strategy throws. The manifest excludes its own hash.
-Unmeasured areas are null; per-event areas cannot be summed without an overlap
-policy.
+See [hashing contract](../research/evidence-hashing.md) and
+[manifest fields](../research/evidence-manifest-v01.md). Hash entrypoints require
+schema-validated input; TypeScript types alone do not validate JSON.
+`hashEvidence(manifest, jcsEvidenceCanonicalizer)` hashes the strategy's exact
+bytes with SHA-256. Omitting the strategy throws. The manifest excludes its own
+hash. Unmeasured areas are null; per-event areas cannot be summed without an
+overlap policy. Sources are represented per page in deterministic dataset/page
+order, preserving every receipt and its separately archived payload.
+
+Hashes require retention of the original input, payloads, receipts, and code
+versions off-chain. A later fetch may differ; it cannot replace the archive.
+`evidenceUri` is an optional locator, not a retention mechanism. Back up the
+archive and database together and define auditor access separately.
 
 The API does not yet construct manifests or submit transactions. The contract
 stores an authorized attestation hash/result and permits revocation; the future
 Stellar adapter must convert 64-character hex hashes to `BytesN<32>`. Contract
-storage does not verify environmental conclusions.
+storage does not verify environmental conclusions. Research activities 3–4
+(attestation design, storage/TTL and costs) remain pending.

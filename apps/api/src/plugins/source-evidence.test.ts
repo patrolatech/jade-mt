@@ -3,6 +3,7 @@ import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, it } from 'vitest';
+import { TerraBrasilisSource } from '@jade/environmental-oracle';
 import { archiveSourcePage, describeSourcePage } from './source-evidence.js';
 import { readConfig } from './config.js';
 
@@ -87,5 +88,95 @@ it('selects real sources through configuration and rejects empty/duplicate selec
     expect(() => readConfig({ ENVIRONMENTAL_DATASETS: value })).toThrow(
       'ENVIRONMENTAL_DATASETS',
     );
+  }
+});
+
+it('archives and replays ordered page bytes including a BOM without upstream access', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'jade-page-replay-'));
+  try {
+    const geometry = {
+      type: 'Polygon' as const,
+      coordinates: [
+        [
+          [0, 0],
+          [1, 0],
+          [1, 1],
+          [0, 0],
+        ],
+      ],
+    };
+    const bodies = [1, 2].map((id) =>
+      Buffer.concat([
+        Buffer.from([0xef, 0xbb, 0xbf]),
+        Buffer.from(
+          JSON.stringify({
+            type: 'FeatureCollection',
+            crs: { type: 'name', properties: { name: 'EPSG:4326' } },
+            features: [
+              {
+                type: 'Feature',
+                id: `event.${id}`,
+                geometry,
+                properties: { view_date: '2021-01-02', label: 'ação' },
+              },
+            ],
+            numberMatched: 2,
+            numberReturned: 1,
+          }),
+        ),
+      ]),
+    );
+    let index = 0;
+    const input = { geometry, cutoffDate: new Date('2020-12-31') };
+    const captured = await new TerraBrasilisSource({
+      datasets: ['DETER'],
+      fetch: async () => new Response(bodies[index++]!),
+      onPage: archiveSourcePage(directory),
+    }).fetchEvents(input);
+    const receipts = captured.sources[0]!.pages;
+    expect(
+      receipts.map((receipt) =>
+        new URL(receipt.requestUrl).searchParams.get('startIndex'),
+      ),
+    ).toEqual(['0', '1']);
+    for (const [i, receipt] of receipts.entries()) {
+      const bytes = await readFile(
+        join(directory, `${receipt.payloadHash}.json`),
+      );
+      expect(bytes).toEqual(bodies[i]);
+      expect(receipt.payloadHash).toBe(
+        createHash('sha256').update(bytes).digest('hex'),
+      );
+      expect(receipt.payloadHash).not.toBe(
+        createHash('sha256')
+          .update(new TextDecoder().decode(bytes))
+          .digest('hex'),
+      );
+      expect(captured.events[i]!.provenance).toMatchObject({
+        payloadHash: receipt.payloadHash,
+        recordLocator: '/features/0',
+        normalizerVersion: 'terrabrasilis-wfs/0.3',
+      });
+    }
+    const replayed = await new TerraBrasilisSource({
+      datasets: ['DETER'],
+      fetch: async (url) => {
+        const receipt = receipts.find(
+          (page) => page.requestUrl === String(url),
+        );
+        if (!receipt) throw new Error('Unexpected replay request');
+        const bytes = await readFile(
+          join(directory, `${receipt.payloadHash}.json`),
+        );
+        return new Response(bytes);
+      },
+      onPage: archiveSourcePage(directory),
+    }).fetchEvents(input);
+    expect(replayed.events).toEqual(captured.events);
+    expect(replayed.sources[0]!.pages.map((page) => page.payloadHash)).toEqual(
+      receipts.map((page) => page.payloadHash),
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
   }
 });

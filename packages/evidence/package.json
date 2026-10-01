@@ -15,6 +15,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@jade/schemas": "workspace:*"
+    "@jade/schemas": "workspace:*",
+    "canonicalize": "5.1.0"
   }
 }
