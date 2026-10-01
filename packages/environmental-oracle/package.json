@@ -15,7 +15,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@date-fns/utc": "2.1.1",
+    "@jade/database": "workspace:*",
     "@jade/schemas": "workspace:*",
-    "@jade/database": "workspace:*"
+    "date-fns": "4.4.0"
   }
 }

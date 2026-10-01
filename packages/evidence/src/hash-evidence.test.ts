@@ -3,8 +3,7 @@ import {
   ResearchNotImplementedError,
   type EvidenceManifestV01,
 } from '@jade/schemas';
-import { hashEvidence } from './hash-evidence.js';
-import { canonicalizeEvidence } from './canonicalize-evidence.js';
+import { canonicalizeEvidence, hashEvidence } from '@jade/evidence';
 
 const manifest: EvidenceManifestV01 = {
   schema: 'jade-evidence/0.1',
@@ -32,7 +31,6 @@ it('refuses hashing without an explicit canonicalization strategy', () => {
 });
 
 it('hashes the exact supplied bytes with the SHA-256 known-answer vector', () => {
-  // Transport test only: these bytes are intentionally not a manifest encoding.
   const testOnlyCanonicalizer = vi.fn(() => Buffer.from('abc', 'utf8'));
   expect(hashEvidence(manifest, testOnlyCanonicalizer)).toBe(
     'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',

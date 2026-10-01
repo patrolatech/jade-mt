@@ -231,6 +231,5 @@ fn empty_identifier_is_rejected() {
 #[test]
 #[ignore = "TODO(intern-blockchain): evaluate TTL extension, archival, restoration and cost"]
 fn ttl_lifecycle_research() {
-    // Intentionally fails when explicitly enabled until the research test exists.
     todo!("Define and test the contract instance, code and attestation TTL lifecycle");
 }

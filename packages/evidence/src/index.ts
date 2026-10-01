@@ -1,5 +1,6 @@
-export { EvidenceManifestV01Schema } from '@jade/schemas';
 export type { EvidenceManifestV01 } from '@jade/schemas';
-export { canonicalizeEvidence } from './canonicalize-evidence.js';
-export type { EvidenceCanonicalizer } from './canonicalize-evidence.js';
+export {
+  canonicalizeEvidence,
+  type EvidenceCanonicalizer,
+} from './canonicalize-evidence.js';
 export { hashEvidence } from './hash-evidence.js';

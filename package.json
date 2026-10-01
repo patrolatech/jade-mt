@@ -19,8 +19,12 @@
     "format:check": "prettier --check .",
     "db:migrate": "pnpm --filter @jade/database migrate",
     "test:contracts": "cargo test --workspace",
-    "smoke": "node scripts/smoke.mjs",
-    "check": "pnpm build && pnpm typecheck && pnpm lint && pnpm format:check && pnpm test && cargo test --workspace && cargo fmt --check"
+    "smoke": "tsx scripts/smoke.ts",
+    "check": "pnpm build && pnpm typecheck && pnpm lint && pnpm format:check && pnpm test && cargo test --workspace && cargo fmt --check",
+    "research:sources": "tsx scripts/research-environmental-sources.ts",
+    "research:geometry": "pnpm build:packages && tsx scripts/research-geometry.ts",
+    "test:live": "pnpm build:packages && tsx scripts/verify-environmental-api.ts",
+    "test:replay": "pnpm build:packages && tsx scripts/replay-environmental-api.ts"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

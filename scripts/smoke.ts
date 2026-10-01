@@ -3,25 +3,36 @@ import { readFile } from 'node:fs/promises';
 import { log } from 'node:console';
 import process from 'node:process';
 import { URL } from 'node:url';
+import type { ValidationResult } from '../packages/schemas/src/index.js';
 
 const [api = 'http://127.0.0.1:3000', web = 'http://127.0.0.1:5173'] =
   process.argv.slice(2);
 const health = await globalThis.fetch(`${api}/health`);
 assert.equal(health.status, 200);
-assert.equal((await health.json()).status, 'ok');
+assert.equal(((await health.json()) as { status: string }).status, 'ok');
 log('GET /health: 200');
 
 const valid = await globalThis.fetch(`${api}/validations`, {
   method: 'POST',
   headers: { 'content-type': 'application/json' },
   body: await readFile(
-    new URL('../docs/examples/validation-input.json', import.meta.url),
+    new URL('../docs/examples/validation-input-sinop.json', import.meta.url),
     'utf8',
   ),
 });
-assert.equal(valid.status, 501);
-assert.equal((await valid.json()).code, 'RESEARCH_NOT_IMPLEMENTED');
-log('POST /validations synthetic request: 501 RESEARCH_NOT_IMPLEMENTED');
+assert.equal(valid.status, 200);
+const screening = (await valid.json()) as ValidationResult;
+assert.equal(screening.status, 'INCONCLUSIVE');
+assert.equal(screening.methodologyStatus, 'draft');
+assert.ok(screening.sources.length > 0);
+assert.ok(
+  screening.issues?.some(
+    (issue) => issue.code === 'METHODOLOGY_PENDING_APPROVAL',
+  ),
+);
+log(
+  'POST /validations: 200 INCONCLUSIVE, draft methodology and source receipts',
+);
 
 const invalid = await globalThis.fetch(`${api}/validations`, {
   method: 'POST',

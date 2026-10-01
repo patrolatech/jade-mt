@@ -1,65 +1,45 @@
-# Environmental screening to attestation
+# Environmental validation flow
 
 ```mermaid
 flowchart TD
-  A[Polygon / ValidationInput] --> B[EnvironmentalSource.fetchEvents]
-  B --> C[EnvironmentalEvent list]
-  C --> D[GeometryRepository.analyzeIntersection per event]
-  D --> E[JADE-ENV-0.1 decision rule]
-  E --> F[ValidationResult]
-  F -. future evidence composition .-> G[EvidenceManifestV01]
-  G --> H[canonicalizeEvidence: explicit strategy required]
-  H --> I[SHA-256 / evidenceHash]
-  I -. future Stellar client .-> J[Soroban attest]
+  A[Validate input geometry] --> B[Create running validation]
+  B --> C[Fetch and archive WFS pages]
+  C --> D[Measure each event in PostGIS]
+  D --> E[Apply decision rule]
+  E --> F[Commit history and exact response]
+  F --> G[Return ValidationResult]
 ```
 
-`validateEnvironmentalOrigin` passes the input geometry and date to a source,
-analyzes each event through `GeometryRepository`, and forwards both the original
-events and per-event measurements to a separate decision rule. No source-specific
-layer names, source hierarchy or blockchain types appear in the workflow.
+`validateEnvironmentalOrigin` coordinates source retrieval, geometry analysis, and
+the decision rule. The TerraBrasilis adapter supplies events, coverage assessments,
+and page receipts. It preserves date precision, requests EPSG:4326, and rejects
+incomplete pagination. The cutoff travels as a UTC date; its interpretation is
+specified in [JADE-ENV-0.1](../methodology/JADE-ENV-0.1.md).
 
-The transport Date uses UTC midnight for the input calendar date. This does not
-select cutoff inclusivity, source timestamp semantics, or a scientific temporal
-rule. Event date values retain their stated precision and may be null.
+PostGIS checks geometry without repair and measures intersections in m². The
+[geometry policy](../research/geometry-crs-policy.md) defines the operations and
+limitations. The default decision remains INCONCLUSIVE while the methodology is
+draft; proposal tests use an explicitly injected decision rule.
 
-The TerraBrasilis adapter has a generic native-fetch transport method returning
-`unknown`. Its high-level `fetchEvents` deliberately throws before using it until
-mapping, spatial/temporal filters and completeness/pagination are researched.
-There are no hardcoded government endpoints or layers.
+The API commits input, source references, measurements, processing versions, and
+response before returning success. Failures retain their error and any archived
+receipts. GET reads saved history without calling WFS. See the
+[database model](database-model.md) for transaction and recovery details.
 
-The PostGIS adapter also throws until its SQL and policy exist. Its return type
-states the measurements that callers need, not how those measurements are to be
-computed. The decision rule throws even for an empty event array. A mock source,
-mock geometry repository and explicit test decision make the full orchestration
-executable in isolation without doing the interns' research.
+## Evidence and attestation
 
-## Evidence boundary
+| Hash           | Subject                                | Status                                            |
+| -------------- | -------------------------------------- | ------------------------------------------------- |
+| `payloadHash`  | Exact retrieved source body            | Implemented; verified when archived and read      |
+| `geometryHash` | Submitted or normalized geometry bytes | Representation and normalization remain undecided |
+| `evidenceHash` | Canonical manifest bytes               | Canonicalization strategy remains undecided       |
 
-`EvidenceManifestV01` is provisional. Its methodology identifier is a version label,
-not a claim that the method has been implemented or approved. An evidence manifest
-must eventually carry provenance sufficient to reproduce a screening result.
+`hashEvidence(manifest, canonicalizer)` hashes the strategy's exact bytes with
+SHA-256. Omitting the strategy throws. The manifest excludes its own hash.
+Unmeasured areas are null; per-event areas cannot be summed without an overlap
+policy.
 
-| Hash         | Intended subject                                  | Unresolved detail                                   |
-| ------------ | ------------------------------------------------- | --------------------------------------------------- |
-| geometryHash | submitted/normalized geometry representation      | representation, CRS metadata, normalization, bytes  |
-| payloadHash  | a retrieved source payload                        | raw or transformed bytes, paging, metadata coverage |
-| evidenceHash | canonical bytes of the complete evidence manifest | canonicalization standard and exact field coverage  |
-
-These hashes are distinct and must never substitute for one another. The manifest
-does not contain its own evidenceHash. SHA-256 returns lowercase 64-character hex;
-the initial contract accepts `BytesN<32>`. The future Stellar adapter must convert
-and validate the representation explicitly.
-
-`hashEvidence(manifest, canonicalizer)` calls the canonicalizer and hashes its exact
-bytes with Node `node:crypto`. Omitting the strategy throws. The only currently
-supplied strategy is a test fixture using the standard `abc` SHA-256 vector; it is
-not an evidence serialization implementation. No `JSON.stringify` fallback exists.
-
-Manifest summary areas may be null when unmeasured. Zero requires a measurement.
-Per-event areas cannot automatically be summed because events may overlap;
-aggregate/union semantics are a research decision. The initial app does not
-construct manifests or send on-chain transactions.
-
-The contract validates authorization and preserves an attestation hash/result. It
-does not independently validate source truth, environmental conclusions or legal
-compliance. Revocation changes status while preserving the original evidence hash.
+The API does not yet construct manifests or submit transactions. The contract
+stores an authorized attestation hash/result and permits revocation; the future
+Stellar adapter must convert 64-character hex hashes to `BytesN<32>`. Contract
+storage does not verify environmental conclusions.

@@ -24,7 +24,6 @@ pub enum AttestationStatus {
     Revoked,
 }
 
-// Initial ABI hypothesis, not the final on-chain evidence model.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Attestation {
@@ -113,8 +112,6 @@ impl JadeAttestation {
             validator: validator.clone(),
             status: AttestationStatus::Active,
         };
-        // TODO(intern-blockchain): evaluate Instance vs Persistent storage, TTL,
-        // TTL extension, archival, restoration and costs. No TTL policy is selected.
         env.storage().persistent().set(&key, &attestation);
         Attested {
             validation_id,

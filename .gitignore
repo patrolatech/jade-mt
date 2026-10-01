@@ -9,3 +9,6 @@ coverage/
 .DS_Store
 *.log
 .pnpm-store/
+
+.data/
+/docs/research/evidence/
