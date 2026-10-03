@@ -26,10 +26,10 @@ The API remains INCONCLUSIVE while that methodology is draft.
 - What exactly is canonicalized before evidence hashing? — **resolved**: the full `EvidenceManifestV01` via RFC 8785 (JCS), see `docs/research/evidence-hashing.md`.
 - How are geometryHash, payloadHash and evidenceHash inputs/bytes defined independently? — **resolved** in `docs/research/evidence-hashing.md`; coordinate precision and processing CRS remain open GIS decisions.
 - Which deterministic representation produces the same hash for semantically equal evidence? — **resolved**: JCS, implemented as `jcsEvidenceCanonicalizer` (`packages/evidence/src/jcs-canonicalizer.ts`), proven order-independent by known-vector tests.
-- Which evidence fields belong on-chain? What is the minimal final attestation schema? — **v0.1 field set and an initial on-chain/off-chain split are closed**, see `docs/research/evidence-manifest-v01.md`; whether any off-chain summary field should also become a Soroban _event_ is still open for Atividade 3.
-- Does transaction authorization make an additional validator signature redundant?
+- Which evidence fields belong on-chain? What is the minimal final attestation schema? — **v0.1 field set and an initial on-chain/off-chain split are closed**, see `docs/research/evidence-manifest-v01.md`; no off-chain summary field becomes a Soroban _event_ in v0.1 — **resolved** in `docs/research/attestation-model-v01.md`.
+- Does transaction authorization make an additional validator signature redundant? — **resolved for the PoC: yes**, see `docs/research/attestation-model-v01.md`.
 - Is the initial single admin/validator model sufficient, and how should authority change over time?
-- How should Soroban TTL be maintained over multi-year certificates?
+- How should Soroban TTL be maintained over multi-year certificates? — **policy proposed** (renew on write, permissionless `extend_ttl`, periodic keeper), see `docs/research/soroban-storage-ttl.md`; fees and restore flow unverified on a network.
 - How do Instance vs Persistent storage affect rent, throughput, restoration and record size?
 - How are instance, contract code and individual attestation TTLs extended and tested?
 - What happens on archival and restoration? Who pays and what is the operational responsibility?
