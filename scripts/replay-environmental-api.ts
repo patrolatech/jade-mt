@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import { error, log } from 'node:console';
 import process from 'node:process';
@@ -14,6 +14,12 @@ import type {
   ValidationInput,
   ValidationResult,
 } from '../packages/schemas/src/index.js';
+import {
+  createMetrics,
+  instrumentedFetch,
+  runtimeVersions,
+  timed,
+} from './research-metrics.js';
 
 const captureDirectory = process.argv[2];
 if (!captureDirectory) {
@@ -40,12 +46,13 @@ const pages = new Map(
   ),
 );
 const seen = new Set<string>();
+const metrics = createMetrics();
 const source = new TerraBrasilisSource({
   datasets: expected.sources.map(({ dataset }) => {
     assert.ok(dataset === 'PRODES' || dataset === 'DETER');
     return dataset;
   }),
-  fetch: async (url, options) => {
+  fetch: instrumentedFetch(metrics, async (url, options) => {
     assert.ok(options?.body == null || typeof options.body === 'string');
     const requestKey = key(String(url), options?.method, options?.body ?? '');
     const page = pages.get(requestKey);
@@ -59,11 +66,12 @@ const source = new TerraBrasilisSource({
     return new globalThis.Response(body, {
       headers: { 'content-type': 'application/json' },
     });
-  },
+  }),
 });
 const pool = createDatabasePool(
   process.env.DATABASE_URL ?? 'postgresql://jade:jade_dev@127.0.0.1:5432/jade',
 );
+const geometryRepository = new PostgisGeometryRepository(pool);
 const app = await buildApp({
   config: {
     databaseUrl: '',
@@ -72,16 +80,30 @@ const app = await buildApp({
     logLevel: 'silent',
   },
   validationDependencies: {
-    source,
-    geometryRepository: new PostgisGeometryRepository(pool),
+    source: {
+      fetchEvents: (input) =>
+        timed(metrics, 'sourcePhaseMs', () => source.fetchEvents(input)),
+    },
+    geometryRepository: {
+      validateProperty: (geometry) =>
+        timed(metrics, 'geometryMs', () =>
+          geometryRepository.validateProperty(geometry),
+        ),
+      analyzeIntersection: (query) =>
+        timed(metrics, 'geometryMs', () =>
+          geometryRepository.analyzeIntersection(query),
+        ),
+    },
   },
 });
 try {
-  const response = await app.inject({
-    method: 'POST',
-    url: '/validations',
-    payload,
-  });
+  const response = await timed(metrics, 'totalMs', () =>
+    app.inject({
+      method: 'POST',
+      url: '/validations',
+      payload,
+    }),
+  );
   assert.equal(response.statusCode, 200, response.body);
   const actual = response.json<ValidationResult>();
   assert.equal(actual.status, expected.status);
@@ -89,8 +111,27 @@ try {
   assert.deepEqual(actual.eventAnalyses, expected.eventAnalyses);
   assert.deepEqual(actual.issues, expected.issues);
   assert.equal(seen.size, pages.size);
+  await mkdir(capture, { recursive: true });
+  const metricsFile = join(
+    capture,
+    `metrics.replay-${new Date().toISOString().replaceAll(':', '-')}.json`,
+  );
+  await writeFile(metricsFile, JSON.stringify(metrics, null, 2) + '\n');
+  await writeFile(
+    join(capture, 'metrics.replay.json'),
+    JSON.stringify(metrics, null, 2) + '\n',
+  );
   log(
-    `Replay passed without external network: ${actual.eventsFound} events, ${actual.eventAnalyses.length} measurements, ${seen.size} verified pages`,
+    JSON.stringify(
+      {
+        result: `Replay passed without external network: ${actual.eventsFound} events, ${actual.eventAnalyses.length} measurements, ${seen.size} verified pages`,
+        metrics,
+        metricsFile,
+        runtimeVersions: await runtimeVersions(pool),
+      },
+      null,
+      2,
+    ),
   );
 } finally {
   await app.close();

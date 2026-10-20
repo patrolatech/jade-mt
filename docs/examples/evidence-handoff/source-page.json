@@ -1,0 +1,27 @@
+{
+  "type": "FeatureCollection",
+  "synthetic": true,
+  "note": "Controlled fixture bytes; not a TerraBrasilis capture. Hashed exactly as retained on disk.",
+  "features": [
+    {
+      "type": "Feature",
+      "id": "fixture-overlap-1",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [-55.6, -12.0],
+            [-55.4, -12.0],
+            [-55.4, -11.8],
+            [-55.6, -11.8],
+            [-55.6, -12.0]
+          ]
+        ]
+      },
+      "properties": {
+        "dataset": "fixture",
+        "observedAt": "2020-01-01"
+      }
+    }
+  ]
+}

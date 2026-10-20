@@ -1,0 +1,52 @@
+{
+  "validationId": "6f9619ff-8b86-d011-b42d-00cf4fc964ff",
+  "methodology": { "id": "JADE-ENV", "version": "0.1" },
+  "methodologyStatus": "draft",
+  "sources": [
+    {
+      "provider": "synthetic",
+      "dataset": "fixture",
+      "layer": "fixture",
+      "crs": "EPSG:4326",
+      "cutoffDate": "2020-12-31",
+      "datasetVersion": "controlled-fixture",
+      "adapter": { "name": "synthetic", "version": "fixture/1" },
+      "coverage": {
+        "status": "unknown",
+        "reason": "Synthetic fixture; coverage is not established"
+      },
+      "matchedEvents": 1,
+      "pages": [
+        {
+          "requestUrl": "https://synthetic.test/evidence-handoff",
+          "method": "GET",
+          "retrievedAt": "2025-10-05T12:00:00.000Z",
+          "payloadHash": "ba43705b8d079575713d7d78127d12b8cf1a16fd9479195fab1f34529def8102",
+          "returned": 1
+        }
+      ]
+    }
+  ],
+  "status": "INCONCLUSIVE",
+  "eventsFound": 1,
+  "eventAnalyses": [
+    {
+      "eventId": "fixture-overlap-1",
+      "analysis": {
+        "intersectionExists": true,
+        "intersectionAreaM2": 482056087.5399208,
+        "intersectionPercentage": 100
+      }
+    }
+  ],
+  "issues": [
+    {
+      "code": "METHODOLOGY_PENDING_APPROVAL",
+      "message": "JADE-ENV-0.1 is a proposal pending researcher approval"
+    },
+    {
+      "code": "INSUFFICIENT_COVERAGE",
+      "message": "Source coverage and observation completeness have not been established for this polygon and cutoff"
+    }
+  ]
+}
