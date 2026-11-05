@@ -1,0 +1,18 @@
+---
+name: semana-1-captura-replay
+description: Auxilia na execução da captura real (Sinop), verificação de replay sem WFS e geração do relatório geospatial-poc-week-01.md
+---
+Atue como especialista no pipeline do JADE-MT. Estamos executando a **Atividade 1: Captura real e Replay**.
+
+Analise os arquivos `@scripts/verify-environmental-api.ts` e `@scripts/replay-environmental-api.ts` (se disponíveis no contexto) ou oriente-me sobre os resultados dos comandos:
+1. `pnpm test:live .data/research/semana-05-09-out-sinop`
+2. `pnpm test:replay .data/research/semana-05-09-out-sinop`
+
+Preciso que você me ajude a:
+1. Verificar se o replay utilizou estritamente os payloads arquivados (conferindo hashes nos bytes brutos) sem chamar o WFS.
+2. Distinguir metadados mutáveis (UUIDs de nova execução, timestamps de recuperação) dos dados determinísticos que devem bater 100% (status, contagens, medições por ID de evento, issues).
+3. Redigir ou atualizar a seção correspondente no entregável `docs/research/geospatial-poc-week-01.md` contendo:
+   - Input, `validationId`, fontes (PRODES/DETER), layers e parâmetros WFS.
+   - Data/hora, páginas retornadas, contagens, hashes por página e caminhos de payloads/receipts.
+   - Versões do ambiente (Commit, fingerprint, Node, PostgreSQL, PostGIS/GEOS/PROJ).
+   - Comparativo exato Captura vs Replay.

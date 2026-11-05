@@ -1,0 +1,16 @@
+---
+name: semana-2-casos-postgis
+description: Analisa lacunas de testes PostGIS, valida casos A/B/C/D1/D2/D3 com evaluateDecisionProposal e documenta matriz.
+---
+Estamos na **Atividade 2: Consolidar casos ambientais com PostGIS real**.
+
+Com base nos testes existentes em `packages/environmental-oracle/` e `packages/database/`:
+1. Verifique a cobertura para os cenários controlados usando PostGIS real e injeção explícita de `evaluateDecisionProposal`:
+   - **Caso A (`PASS`):** Sem interseção de área positiva e cobertura suficiente.
+   - **Caso B (`PASS`):** Interseção positiva com ocorrência estabelecida antes/no cutoff.
+   - **Caso C (`FAIL`):** Ocorrência estabelecida após o cutoff, cobertura suficiente, sem incertezas.
+   - **Caso D1 (`INCONCLUSIVE`):** Cobertura desconhecida/insuficiente.
+   - **Caso D2 (`INCONCLUSIVE`):** Data ausente, intervalo ambíguo ou observação sem data de ocorrência.
+   - **Caso D3 (Erro Operacional):** Fonte indisponível, timeout ou paginação incompleta (sem decisão parcial).
+2. Verifique casos de borda: contato apenas na borda (área zero), Polygon com hole, MultiPolygon, geometria inválida (deve gerar issue e medição ausente, sem fabricar zero), eventos sobrepostos (não somar áreas) e preservação do status `INCONCLUSIVE` (DRAFT) por padrão na API.
+3. Gere o código de testes de integração apenas para as lacunas reais encontradas e monte a Matriz de Casos + Lista de Decisões Científicas Pendentes para o arquivo `docs/research/geospatial-poc-week-01.md`.
