@@ -1,11 +1,7 @@
-import { execFile as execFileCallback } from 'node:child_process';
 import { performance } from 'node:perf_hooks';
-import { promisify } from 'node:util';
-
-const execFile = promisify(execFileCallback);
 
 export interface PhaseMetrics {
-  /** Wall time of HTTP requests (headers + body consumption). Concurrent pages sum up. */
+  /** HTTP time (headers + body consumption), including rejected requests. Concurrent pages sum up. */
   networkMs: number;
   /** Wall time of the whole source phase (fetch + parse + mapping + archive). */
   sourcePhaseMs: number;
@@ -16,6 +12,7 @@ export interface PhaseMetrics {
   persistenceFailMs: number;
   /** Wall time of the full request handling. */
   totalMs: number;
+  /** Fetch attempts, including ones rejected by the upstream. */
   pagesFetched: number;
   bytesReceived: number;
 }
@@ -54,9 +51,11 @@ export async function timed<T>(
 }
 
 /**
- * Wraps fetch to count pages, total HTTP time and response bytes. The body is
- * counted when the consumer reads arrayBuffer(), matching how the WFS adapter
- * hashes the exact bytes it receives.
+ * Wraps fetch to count attempts, total HTTP time and response bytes. Elapsed
+ * time is recorded in `finally`, so rejected requests (unavailable upstream,
+ * body reset) still contribute to `networkMs`. The body is counted when the
+ * consumer reads arrayBuffer(), matching how the WFS adapter hashes the exact
+ * bytes it receives.
  */
 export function instrumentedFetch(
   metrics: PhaseMetrics,
@@ -65,8 +64,12 @@ export function instrumentedFetch(
   return async (input, init) => {
     metrics.pagesFetched += 1;
     const started = performance.now();
-    const response = await inner(input, init);
-    metrics.networkMs += performance.now() - started;
+    let response: Response;
+    try {
+      response = await inner(input, init);
+    } finally {
+      metrics.networkMs += performance.now() - started;
+    }
     if (!response || typeof response.arrayBuffer !== 'function')
       return response;
     return new Proxy(response, {
@@ -74,10 +77,13 @@ export function instrumentedFetch(
         if (property === 'arrayBuffer') {
           return async () => {
             const bodyStarted = performance.now();
-            const buffer = await target.arrayBuffer();
-            metrics.networkMs += performance.now() - bodyStarted;
-            metrics.bytesReceived += buffer.byteLength;
-            return buffer;
+            try {
+              const buffer = await target.arrayBuffer();
+              metrics.bytesReceived += buffer.byteLength;
+              return buffer;
+            } finally {
+              metrics.networkMs += performance.now() - bodyStarted;
+            }
           };
         }
         const value = Reflect.get(target, property, target);
@@ -85,39 +91,4 @@ export function instrumentedFetch(
       },
     }) as Response;
   };
-}
-
-export async function gitMetadata(root: string) {
-  try {
-    const { stdout: commit } = await execFile('git', ['rev-parse', 'HEAD'], {
-      cwd: root,
-    });
-    const { stdout: status } = await execFile(
-      'git',
-      ['status', '--porcelain'],
-      {
-        cwd: root,
-      },
-    );
-    return { commit: commit.trim(), checkoutDirty: status.trim().length > 0 };
-  } catch {
-    return { commit: null, checkoutDirty: null };
-  }
-}
-
-export async function runtimeVersions(pool: {
-  query(text: string): Promise<{ rows: Record<string, string>[] }>;
-}) {
-  const { rows } = await pool.query(
-    'SELECT version() AS postgresql, postgis_full_version() AS postgis',
-  );
-  return {
-    node: process.version,
-    postgresql: rows[0]?.postgresql ?? null,
-    postgis: rows[0]?.postgis ?? null,
-  };
-}
-
-export function maskDatabaseUrl(url: string): string {
-  return url.replace(/\/\/([^:/@]+):[^@]*@/, '//$1:***@');
 }

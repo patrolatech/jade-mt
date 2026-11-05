@@ -2,7 +2,8 @@
 
 Estagiário 2 (GIS / Oráculo Ambiental). Consolidation executed 19–20 Oct 2026
 (local) on branch `intern-gis-atividades-semana-05-09-out`, based on `master`
-at `90231e2` (PRs #29 and #30).
+at `90231e2` (PRs #29 and #30). Review adjustments (artifacts on failure,
+credential-free metadata, capture package, regression tests) applied 5 Nov 2026.
 
 Flow under test: `geometry → source → events → PostGIS → rule → ValidationResult`,
 with the production API remaining `INCONCLUSIVE` (methodology `JADE-ENV-0.1`
@@ -11,15 +12,19 @@ draft) and `PASS`/`FAIL` reachable only through the injected
 
 ## Deliverables
 
-| Artifact                                                   | Purpose                                                                   |
-| ---------------------------------------------------------- | ------------------------------------------------------------------------- |
-| `scripts/research-metrics.ts`                              | shared phase timing, git/runtime metadata, masked database URLs           |
-| `scripts/verify-environmental-api.ts` (rewritten)          | live capture with phase metrics + `metrics.json`/`metadata.json`          |
-| `scripts/replay-environmental-api.ts` (rewritten)          | offline replay with the same instrumentation, per-run metrics files       |
-| `apps/api/src/decision-proposal.integration.test.ts` (new) | controlled A/B/C/D1/D2/D3 decision cases against real PostGIS             |
-| `docs/examples/evidence-handoff/` (new)                    | versioned synthetic fixture: input, page bytes, result, manifest          |
-| `docs/research/oracle-evidence-handoff-v01.md` (new)       | field mapping `ValidationResult` → `EvidenceManifestV01`, with pendências |
-| this document                                              | week report: captures, cases, performance, limits                         |
+| Artifact                                                   | Purpose                                                                                                                               |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `scripts/research-metrics.ts`                              | shared phase timing; fetch instrumentation counts rejected requests too                                                               |
+| `scripts/research-metadata.ts` (new)                       | run metadata (git, `processingVersion`, `runtimeVersions`) **without any database URL**, plus `saveRunArtifacts`                      |
+| `scripts/verify-environmental-api.ts` (rewritten)          | live capture: metrics + metadata + `request.json`/`result.json`, and `failure.json` (message, `httpStatus`, `validationId`) on errors |
+| `scripts/replay-environmental-api.ts` (rewritten)          | offline replay with the same instrumentation, per-run metrics files, failure artifacts too                                            |
+| `scripts/research-metrics.test.ts` (new)                   | regression: rejected fetch/body-read still accumulate `networkMs`; `timed` on rejection                                               |
+| `scripts/research-metadata.test.ts` (new)                  | regression: no credentials in metadata (userinfo + `?password=`), failure-path artifacts, version degradation                         |
+| `apps/api/src/decision-proposal.integration.test.ts` (new) | controlled A/B/C/D1/D2/D3 decision cases against real PostGIS                                                                         |
+| `docs/examples/evidence-handoff/` (new)                    | versioned synthetic fixture: input, page bytes, result, manifest                                                                      |
+| `docs/research/oracle-evidence-handoff-v01.md` (new)       | field mapping `ValidationResult` → `EvidenceManifestV01`, with pendências                                                             |
+| `.data/research/pacote-capturas-semana-05-09.tar.gz`       | capture package **outside Git** (attach to the PR): README, both captures, SHA-256 sidecar                                            |
+| this document                                              | week report: captures, cases, performance, limits                                                                                     |
 
 ## 1. Capture and replay
 
@@ -34,46 +39,63 @@ Base capture reused as agreed: `.data/research/semana-05-09-out-sinop`
   `result.json` (status, eventsFound, every `eventAnalyses` entry, every
   issue).
 - Each replay writes `metrics.replay-<timestamp>.json` plus the last run to
-  `metrics.replay.json` next to the capture; four consecutive runs all passed.
-- `pnpm test:live <dir>` re-verified the full live path with the new
-  instrumentation on 19 Oct into a **new** directory
-  (`.data/research/live-check-19-10`), leaving the base capture untouched.
+  `metrics.replay.json` next to the capture; four consecutive runs all passed
+  (table below). The capture also gets a `metadata.json` (`mode: replay`,
+  commit, `processingVersion`, `runtimeVersions` — no credentials).
+- `pnpm test:live <dir>` re-verified the full live path with the final
+  instrumentation into `.data/research/live-check-19-10` (regenerated 5 Nov,
+  leaving the base capture untouched). The DETER WFS was intermittently down
+  during the exercise (two attempts ended in HTTP 503 `SOURCE_UNAVAILABLE`);
+  those failed runs still wrote `metrics.json`, `metadata.json`,
+  `request.json` and `failure.json` with the `validationId` before exiting
+  non-zero — the failure path required by the review, exercised against a
+  real upstream outage. The third attempt succeeded (numbers below).
+- **Capture package for the PR** (raw captures live outside Git):
+  `.data/research/pacote-capturas-semana-05-09.tar.gz` (56 KB) with
+  `pacote-capturas-semana-05-09.sha256` =
+  `99c77f70b1bea7d5c5c2dd277d02b228925963f478f18e36467c9675b7d2ec8a`.
+  Contents: package `README.md` (access + reproduction commands), the base
+  capture and the live capture. Verified end-to-end from a fresh extraction:
+  `sha256sum -c` OK, then `pnpm test:replay <dir>` passed for both captures
+  (no network). Attach the tarball to the PR.
 
 ## 2. Performance
 
 All numbers from this machine's PostGIS stack (below). `networkMs`
-accumulates every `fetch` call (PRODES and DETER run concurrently, so it can
-exceed wall-clock phases); in replay it is local archive read + hash
-verification, not network.
+accumulates every `fetch` call including ones rejected by the upstream (the
+request never returned a response), so it can exceed wall-clock phases; in
+replay it is local archive read + hash verification, not network.
 
-### Live capture (19 Oct, real WFS + persistence)
+### Live capture (5 Nov re-run, real WFS + persistence)
 
-| Phase                       | ms      |
-| --------------------------- | ------- |
-| `networkMs` (2 pages)       | 4 452.8 |
-| `sourcePhaseMs` (wall)      | 3 980.3 |
-| `geometryMs` (PostGIS loop) | 109.6   |
-| `persistenceStartMs`        | 7.7     |
-| `persistenceCompleteMs`     | 142.0   |
-| `totalMs` (whole request)   | 4 312.3 |
+| Phase                       | ms       |
+| --------------------------- | -------- |
+| `networkMs` (2 pages)       | 13 558.7 |
+| `sourcePhaseMs` (wall)      | 13 215.0 |
+| `geometryMs` (PostGIS loop) | 127.1    |
+| `persistenceStartMs`        | 8.5      |
+| `persistenceCompleteMs`     | 148.1    |
+| `totalMs` (whole request)   | 13 569.7 |
 
 Result: HTTP 200, `INCONCLUSIVE`, 97 events, 85 measurements, issues
 `INVALID_EVENT_GEOMETRY`, `METHODOLOGY_PENDING_APPROVAL`,
-`INSUFFICIENT_COVERAGE`, `UNCERTAIN_EVENT_DATE`.
+`INSUFFICIENT_COVERAGE`, `UNCERTAIN_EVENT_DATE`. Network time is dominated by
+the degraded DETER endpoint (responded, but far slower than the 4.5 s of the
+19 Oct run); geometry and persistence costs stayed in the same range.
 
-### Offline replay of the base capture (4 consecutive runs)
+### Offline replay of the base capture (4 consecutive runs, 5 Nov)
 
 | Run | `networkMs` (local read+hash) | `sourcePhaseMs` | `geometryMs` | `totalMs` |
 | --- | ----------------------------- | --------------- | ------------ | --------- |
-| 1   | 25.4                          | 16.1            | 133.9        | 218.6     |
-| 2   | 35.9                          | 23.4            | 143.0        | 238.1     |
-| 3   | 24.3                          | 15.6            | 133.9        | 216.4     |
-| 4   | 31.6                          | 20.3            | 160.2        | 255.2     |
+| 1   | 23.5                          | 14.9            | 125.7        | 204.7     |
+| 2   | 25.0                          | 16.1            | 124.2        | 207.1     |
+| 3   | 25.1                          | 16.1            | 123.6        | 205.6     |
+| 4   | 24.2                          | 15.5            | 126.8        | 205.5     |
 
-- `totalMs` mean 232.1 ms (min 216.4 / max 255.2); `geometryMs` mean 142.8 ms.
+- `totalMs` mean 205.7 ms (min 204.7 / max 207.1); `geometryMs` mean 125.1 ms.
 - `persistence*Ms = 0` by design: replay runs the app offline (no
   `validationPersistence`), so persistence cost is only measured live
-  (142.0 ms for `complete` above).
+  (148.1 ms for `complete` above).
 - Every run verified 2 pages / 135 531 bytes with identical assertions.
 
 ## 3. Controlled decision cases (real PostGIS)
@@ -129,16 +151,16 @@ the git-ignored `.data/` tree.
 
 ## Environment fingerprint
 
-| Item                | Value                                                                     |
-| ------------------- | ------------------------------------------------------------------------- |
-| Base commit         | `90231e2` (PR #29 + #30), branch `intern-gis-atividades-semana-05-09-out` |
-| `processingVersion` | `sha256:001860c975aa25da647a48981be8ffab8cd8bb9f473b97775c91418065778623` |
-| Node                | v24.14.0                                                                  |
-| PostgreSQL          | 17.5 (`postgis/postgis:17-3.5`, port 5434)                                |
-| PostGIS             | 3.5.2 (GEOS 3.9.0, PROJ 7.2.1)                                            |
-| Adapter             | `TerraBrasilisSource` `terrabrasilis-wfs/0.3` (PRODES + DETER)            |
-| Test suites         | unit 129 passed (11 files); integration 56 passed (5 files, was 50)       |
-| Quality gates       | `pnpm typecheck`, `pnpm lint`, `pnpm format:check` — all green            |
+| Item                | Value                                                                                           |
+| ------------------- | ----------------------------------------------------------------------------------------------- |
+| Base commit         | `90231e2` (PR #29 + #30), branch `intern-gis-atividades-semana-05-09-out`                       |
+| `processingVersion` | `sha256:001860c975aa25da647a48981be8ffab8cd8bb9f473b97775c91418065778623`                       |
+| Node                | v24.14.0                                                                                        |
+| PostgreSQL          | 17.5 (`postgis/postgis:17-3.5`, port 5434)                                                      |
+| PostGIS             | 3.5.2 (GEOS 3.9.0, PROJ 7.2.1)                                                                  |
+| Adapter             | `TerraBrasilisSource` `terrabrasilis-wfs/0.3` (PRODES + DETER)                                  |
+| Test suites         | unit 137 passed (13 files, incl. 8 script regressions); integration 56 passed (5 files, was 50) |
+| Quality gates       | `pnpm typecheck`, `pnpm lint`, `pnpm format:check` — all green                                  |
 
 ## Limits and open points
 
@@ -147,7 +169,10 @@ the git-ignored `.data/` tree.
 - The live DETER layer is dynamic; a re-capture may not reproduce the base
   capture's 97 events. Replay always uses the retained capture, and re-fetching
   a mutable upstream does not reproduce an older capture (see
-  `evidence-hashing.md`).
+  `evidence-hashing.md`). The DETER endpoint was also observed unavailable
+  (hang → `EnvironmentalSourceUnavailableError` → HTTP 503 D3); the run then
+  leaves `failure.json` + metrics + metadata behind instead of a silent
+  partial result.
 - 12 of the 97 captured events have invalid source geometry → issue
   `INVALID_EVENT_GEOMETRY` and no measurement (never a fabricated area 0).
 - Coverage is `unknown` for TerraBrasilis, so `INSUFFICIENT_COVERAGE` and

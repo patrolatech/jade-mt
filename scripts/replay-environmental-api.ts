@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { resolve, join } from 'node:path';
+import { readFile, writeFile } from 'node:fs/promises';
+import { basename, resolve, join } from 'node:path';
 import { error, log } from 'node:console';
 import process from 'node:process';
+import { URL, fileURLToPath } from 'node:url';
 import { buildApp } from '../apps/api/src/app.js';
+import { processingVersion } from '../apps/api/src/plugins/processing-version.js';
 import {
   createDatabasePool,
   PostgisGeometryRepository,
@@ -14,12 +16,12 @@ import type {
   ValidationInput,
   ValidationResult,
 } from '../packages/schemas/src/index.js';
+import { createMetrics, instrumentedFetch, timed } from './research-metrics.js';
 import {
-  createMetrics,
-  instrumentedFetch,
-  runtimeVersions,
-  timed,
-} from './research-metrics.js';
+  buildRunMetadata,
+  saveRunArtifacts,
+  type RunFailure,
+} from './research-metadata.js';
 
 const captureDirectory = process.argv[2];
 if (!captureDirectory) {
@@ -72,6 +74,7 @@ const pool = createDatabasePool(
   process.env.DATABASE_URL ?? 'postgresql://jade:jade_dev@127.0.0.1:5432/jade',
 );
 const geometryRepository = new PostgisGeometryRepository(pool);
+const fingerprint = await processingVersion();
 const app = await buildApp({
   config: {
     databaseUrl: '',
@@ -96,6 +99,11 @@ const app = await buildApp({
     },
   },
 });
+let result: ValidationResult | undefined;
+let failure: RunFailure | undefined;
+let caught: unknown;
+let httpStatus: number | null = null;
+let validationId: string | null = null;
 try {
   const response = await timed(metrics, 'totalMs', () =>
     app.inject({
@@ -104,19 +112,51 @@ try {
       payload,
     }),
   );
-  assert.equal(response.statusCode, 200, response.body);
-  const actual = response.json<ValidationResult>();
-  assert.equal(actual.status, expected.status);
-  assert.equal(actual.eventsFound, expected.eventsFound);
-  assert.deepEqual(actual.eventAnalyses, expected.eventAnalyses);
-  assert.deepEqual(actual.issues, expected.issues);
+  httpStatus = response.statusCode;
+  try {
+    const body = JSON.parse(response.body) as { validationId?: unknown };
+    if (typeof body.validationId === 'string') validationId = body.validationId;
+  } catch {
+    // Non-JSON body — keep validationId null.
+  }
+  assert.equal(httpStatus, 200, response.body);
+  result = response.json<ValidationResult>();
+  validationId = result.validationId;
+  assert.equal(result.status, expected.status);
+  assert.equal(result.eventsFound, expected.eventsFound);
+  assert.deepEqual(result.eventAnalyses, expected.eventAnalyses);
+  assert.deepEqual(result.issues, expected.issues);
   assert.equal(seen.size, pages.size);
-  await mkdir(capture, { recursive: true });
-  const metricsFile = join(
-    capture,
-    `metrics.replay-${new Date().toISOString().replaceAll(':', '-')}.json`,
-  );
-  await writeFile(metricsFile, JSON.stringify(metrics, null, 2) + '\n');
+} catch (cause) {
+  caught = cause;
+  failure = {
+    message: cause instanceof Error ? cause.message : String(cause),
+    httpStatus,
+    validationId,
+  };
+}
+const metricsFile = join(
+  capture,
+  `metrics.replay-${new Date().toISOString().replaceAll(':', '-')}.json`,
+);
+try {
+  const metadata = await buildRunMetadata({
+    mode: 'replay',
+    root: fileURLToPath(new URL('../', import.meta.url)),
+    processingVersion: fingerprint,
+    pool,
+    adapterVersions: expected.sources.map((source) => ({
+      dataset: source.dataset,
+      adapter: source.adapter ?? null,
+    })),
+    capture: basename(capture),
+  });
+  await saveRunArtifacts(capture, {
+    metrics,
+    metadata,
+    metricsFileName: basename(metricsFile),
+    ...(failure ? { failure } : {}),
+  });
   await writeFile(
     join(capture, 'metrics.replay.json'),
     JSON.stringify(metrics, null, 2) + '\n',
@@ -124,15 +164,23 @@ try {
   log(
     JSON.stringify(
       {
-        result: `Replay passed without external network: ${actual.eventsFound} events, ${actual.eventAnalyses.length} measurements, ${seen.size} verified pages`,
+        outcome: failure ? 'failed' : 'ok',
+        result: failure
+          ? null
+          : `Replay passed without external network: ${result?.eventsFound} events, ${result?.eventAnalyses.length} measurements, ${seen.size} verified pages`,
+        httpStatus,
+        validationId,
         metrics,
         metricsFile,
-        runtimeVersions: await runtimeVersions(pool),
       },
       null,
       2,
     ),
   );
+  if (caught) {
+    error(JSON.stringify({ outcome: 'failed', ...failure, capture }, null, 2));
+    throw caught;
+  }
 } finally {
   await app.close();
   await pool.end();
