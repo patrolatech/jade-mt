@@ -3,7 +3,9 @@ extern crate std;
 use super::*;
 use soroban_sdk::{
     testutils::{
+        storage::{Instance as _, Persistent as _, Temporary as _},
         Address as _, AuthorizedFunction, AuthorizedInvocation, EnvTestConfig, Events as _,
+        Ledger as _,
     },
     Event, IntoVal,
 };
@@ -228,8 +230,124 @@ fn empty_identifier_is_rejected() {
     );
 }
 
+/// Experiment (Atividade 4): default TTLs and how they decay with ledger time.
+/// Values are those of the native test environment (soroban-sdk 27.0.6) and
+/// mirror the protocol defaults used for the networks at that SDK version.
 #[test]
-#[ignore = "TODO(intern-blockchain): evaluate TTL extension, archival, restoration and cost"]
-fn ttl_lifecycle_research() {
-    todo!("Define and test the contract instance, code and attestation TTL lifecycle");
+fn ttl_defaults_and_decay() {
+    let (env, _, contract, id) = setup();
+    let key = DataKey::Attestation(id);
+    let info = env.ledger().get();
+    assert_eq!(info.min_persistent_entry_ttl, 4096);
+    assert_eq!(info.min_temp_entry_ttl, 16);
+    assert_eq!(info.max_entry_ttl, 6_312_000);
+
+    // Raw writes bypass attest(), which renews TTL; this shows the defaults.
+    env.as_contract(&contract, || env.storage().persistent().set(&key, &1u32));
+    let ttl = |env: &Env| {
+        env.as_contract(&contract, || {
+            (
+                env.storage().persistent().get_ttl(&key),
+                env.storage().instance().get_ttl(),
+            )
+        })
+    };
+    // Newly written entries live min_persistent_entry_ttl - 1 ledgers.
+    assert_eq!(ttl(&env), (4095, 4095));
+    env.ledger().with_mut(|l| l.sequence_number += 1000);
+    assert_eq!(ttl(&env), (3095, 3095));
+}
+
+/// Experiment: Temporary entries are deleted at expiry, which is why they are
+/// unsuitable for certificates; Persistent entries are not.
+#[test]
+fn temporary_entries_expire_but_persistent_attestations_remain_readable() {
+    let (env, admin, contract, id) = setup();
+    env.mock_all_auths();
+    attest(&env, &contract, &admin, &id);
+    let scratch = DataKey::Attestation(String::from_str(&env, "scratch"));
+    env.as_contract(&contract, || {
+        env.storage().temporary().set(&scratch, &1u32);
+        assert_eq!(env.storage().temporary().get_ttl(&scratch), 15);
+    });
+    env.ledger().with_mut(|l| l.sequence_number += 5000);
+    env.as_contract(&contract, || {
+        assert!(!env.storage().temporary().has(&scratch));
+    });
+    let client = JadeAttestationClient::new(&env, &contract);
+    assert!(client.get_attestation(&id).is_some());
+}
+
+/// Experiment: extend_ttl only acts when the remaining TTL is below the
+/// threshold, and is capped by max_entry_ttl.
+#[test]
+fn extend_ttl_respects_threshold() {
+    let (env, _, contract, id) = setup();
+    let key = DataKey::Attestation(id);
+    env.as_contract(&contract, || {
+        let store = env.storage().persistent();
+        store.set(&key, &1u32);
+        // Remaining TTL (4095) is above the threshold: no change.
+        store.extend_ttl(&key, 100, 200);
+        assert_eq!(store.get_ttl(&key), 4095);
+        // Threshold above remaining TTL: extended to the requested value.
+        store.extend_ttl(&key, 5000, 10_000);
+        assert_eq!(store.get_ttl(&key), 10_000);
+    });
+}
+
+/// Experiment: the native test host does not model archival; an expired
+/// Persistent entry is still readable and still blocks overwrites.
+/// Real archival/restoration must be validated on a network (see
+/// docs/research/soroban-storage-ttl.md).
+#[test]
+fn expired_persistent_attestation_cannot_be_overwritten_in_test_host() {
+    let (env, admin, contract, id) = setup();
+    env.mock_all_auths();
+    attest(&env, &contract, &admin, &id);
+    env.ledger().with_mut(|l| l.sequence_number += 5000);
+    let client = JadeAttestationClient::new(&env, &contract);
+    assert_eq!(
+        client.try_attest(
+            &id,
+            &BytesN::from_array(&env, &[9; 32]),
+            &String::from_str(&env, "0.1"),
+            &ValidationResult::Pass,
+            &admin,
+        ),
+        Err(Ok(Error::AlreadyExists))
+    );
+    assert_eq!(
+        client.get_attestation(&id).unwrap().evidence_hash,
+        BytesN::from_array(&env, &[7; 32])
+    );
+}
+
+#[test]
+fn writes_renew_ttl_and_extend_ttl_is_permissionless() {
+    let (env, admin, contract, id) = setup();
+    env.mock_all_auths();
+    attest(&env, &contract, &admin, &id);
+    let key = DataKey::Attestation(id.clone());
+    let ttl = |env: &Env| {
+        env.as_contract(&contract, || {
+            (
+                env.storage().persistent().get_ttl(&key),
+                env.storage().instance().get_ttl(),
+            )
+        })
+    };
+    assert_eq!(ttl(&env), (RENEW_TO, RENEW_TO));
+
+    // Drop below the threshold, then renew without any authorization.
+    env.ledger()
+        .with_mut(|l| l.sequence_number += RENEW_TO - RENEW_THRESHOLD + 1);
+    env.mock_auths(&[]);
+    let client = JadeAttestationClient::new(&env, &contract);
+    client.extend_ttl(&id);
+    assert_eq!(ttl(&env), (RENEW_TO, RENEW_TO));
+    assert_eq!(
+        client.try_extend_ttl(&String::from_str(&env, "missing")),
+        Err(Ok(Error::NotFound))
+    );
 }

@@ -9,6 +9,7 @@ are engineering hypotheses for Intern 1 to evaluate.
   only accepts that admin as validator and requires Soroban authorization for the
   full invocation. Duplicate IDs, including revoked IDs, cannot be overwritten.
 - `get_attestation(validation_id)` reads the record or returns `None` for an absent key.
+- `extend_ttl(validation_id)` renews TTL; no authorization, no data change.
 - `revoke(validation_id)` requires the stored admin's authorization and retains the
   original hash and result. Repeating a revocation is harmless; unknown IDs error.
 
@@ -16,24 +17,21 @@ The result variants are `Pass`, `Fail`, `Inconclusive`, `Error`; lifecycle statu
 `Active` or `Revoked`. The hash is `BytesN<32>`. Initial ID/methodology string limits
 are 128/64 bytes. There is no key rotation, multi-validator system or upgrade flow.
 
-## Storage and lifecycle TODOs
+## Storage and lifecycle
 
-Hypothesis: instance storage for the admin; one persistent entry per attestation.
-No TTL extension is performed. This is not a solved certificate lifecycle.
+Instance storage holds the admin; one Persistent entry holds each attestation.
+`attest` and `revoke` renew the attestation and instance TTL to about 365 days
+(threshold 30 days), and `extend_ttl(validation_id)` lets anyone renew without
+authorization. Reads never extend TTL. Rationale, experiments and policy:
+`docs/research/soroban-storage-ttl.md`; record and auth model:
+`docs/research/attestation-model-v01.md`.
 
-TODO(intern-blockchain):
+Not covered by native tests: archival, restoration and fees (the test host does not
+model them), Wasm code TTL, and the off-chain restore flow. These need a testnet
+experiment and adapter support in `packages/stellar`.
 
-- Evaluate Instance vs Persistent storage.
-- Evaluate TTL for instance, code and individual attestations.
-- Test TTL extension.
-- Test archival.
-- Test restoration and whether reads/mutations need client-side restoration.
-- Estimate transaction and long-term maintenance costs.
-- Confirm overwrite protection and revocation behavior across restoration.
-
-The ignored `ttl_lifecycle_research` test will deliberately fail if enabled before
-its research implementation. Active authorization tests verify recorded auth trees
-and reject both an outsider address and an unsigned claim to the admin identity.
+Active authorization tests verify recorded auth trees and reject both an outsider
+address and an unsigned claim to the admin identity.
 
 ## Tooling
 

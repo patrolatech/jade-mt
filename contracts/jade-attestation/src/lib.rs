@@ -8,6 +8,12 @@ use soroban_sdk::{
     String,
 };
 
+// Ledgers close roughly every 5 seconds. The network caps entry TTL at
+// max_entry_ttl (6_312_000 ledgers, about 365 days), so renewal is periodic.
+const LEDGERS_PER_DAY: u32 = 17_280;
+const RENEW_THRESHOLD: u32 = 30 * LEDGERS_PER_DAY;
+const RENEW_TO: u32 = 365 * LEDGERS_PER_DAY;
+
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ValidationResult {
@@ -113,6 +119,7 @@ impl JadeAttestation {
             status: AttestationStatus::Active,
         };
         env.storage().persistent().set(&key, &attestation);
+        Self::keep_alive(&env, &key);
         Attested {
             validation_id,
             validator,
@@ -125,6 +132,18 @@ impl JadeAttestation {
         env.storage()
             .persistent()
             .get(&DataKey::Attestation(validation_id))
+    }
+
+    /// Renews the TTL of an attestation and of the contract instance. Anyone may
+    /// call it: it changes no data and only prepays rent. Archived entries must be
+    /// restored by the client (RestoreFootprint) before this can succeed.
+    pub fn extend_ttl(env: Env, validation_id: String) -> Result<(), Error> {
+        let key = DataKey::Attestation(validation_id);
+        if !env.storage().persistent().has(&key) {
+            return Err(Error::NotFound);
+        }
+        Self::keep_alive(&env, &key);
+        Ok(())
     }
 
     pub fn revoke(env: Env, validation_id: String) -> Result<(), Error> {
@@ -145,8 +164,18 @@ impl JadeAttestation {
         }
         attestation.status = AttestationStatus::Revoked;
         env.storage().persistent().set(&key, &attestation);
+        Self::keep_alive(&env, &key);
         Revoked { validation_id }.publish(&env);
         Ok(())
+    }
+
+    fn keep_alive(env: &Env, key: &DataKey) {
+        env.storage()
+            .persistent()
+            .extend_ttl(key, RENEW_THRESHOLD, RENEW_TO);
+        env.storage()
+            .instance()
+            .extend_ttl(RENEW_THRESHOLD, RENEW_TO);
     }
 }
 
