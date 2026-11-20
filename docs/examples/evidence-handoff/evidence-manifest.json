@@ -1,0 +1,26 @@
+{
+  "schema": "jade-evidence/0.1",
+  "validationId": "6f9619ff-8b86-d011-b42d-00cf4fc964ff",
+  "methodology": { "id": "JADE-ENV", "version": "0.1" },
+  "input": {
+    "geometryHash": "ebcd07f9eaf6c953dee08c6ad83396988003005baee5ab27f39f01dd431ea38d",
+    "commodity": "soy",
+    "cutoffDate": "2020-12-31"
+  },
+  "sources": [
+    {
+      "provider": "synthetic",
+      "dataset": "fixture",
+      "datasetVersion": "controlled-fixture",
+      "layer": "fixture",
+      "retrievedAt": "2025-10-05T12:00:00.000Z",
+      "payloadHash": "ba43705b8d079575713d7d78127d12b8cf1a16fd9479195fab1f34529def8102"
+    }
+  ],
+  "analysis": {
+    "intersectionAreaM2": null,
+    "intersectionPercentage": null,
+    "eventsFound": 1
+  },
+  "result": "INCONCLUSIVE"
+}

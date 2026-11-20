@@ -40,6 +40,7 @@ The API remains INCONCLUSIVE while that methodology is draft.
 ## Joint decisions and main researcher
 
 - What is the final EvidenceManifest schema and its compatibility/versioning policy? — **v0.1 field set closed**, see `docs/research/evidence-manifest-v01.md`; `lotId` and a `warnings` field were evaluated and deliberately not added (see that document's "Candidate new fields" section) pending product/methodology decisions.
+- How does the oracle's `ValidationResult` map into `EvidenceManifestV01`, and which aggregates are safe to publish? — **mapping closed for v0.1** in `docs/research/oracle-evidence-handoff-v01.md` (aggregate areas stay `null` until an aggregation policy is approved; hash-verified fixture in `docs/examples/evidence-handoff/`); manifest composition/publication itself remains open.
 - What evidence must accompany incomplete/inconclusive/error outcomes?
 - Which metadata proves dataset/version coverage and supports reproduction?
 - When can scenarios A–D be enabled as approved methodology tests?

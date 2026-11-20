@@ -1,0 +1,13 @@
+---
+name: semana-4-performance-pr
+description: Adiciona instrumentação mínima de tempo, gera tabela de benchmark e prepara o checklist do PR.
+---
+Estamos na **Atividade 4: Medir desempenho, registrar limites e fechar PR**.
+
+1. Analise os scripts de captura/replay e sugira uma **instrumentação mínima** (ex: `performance.now()` ou timestamps simples, sem criar bibliotecas de observabilidade) para separar os tempos de:
+   - Consulta WFS
+   - Processamento PostGIS
+   - Persistência no Banco
+   - Tempo Total
+2. Formate a tabela de desempenho (para 3 execuções controladas/replay) e a seção de **Limites Operacionais** (timeout WFS não cobrindo pós-processamento, volume de bytes, concorrência e execuções presas em `running`) para inserir em `docs/research/geospatial-poc-week-01.md`.
+3. Gere o template de descrição do Pull Request listando cada entregável, o comando que o comprova (`pnpm test`, `pnpm test:integration`, `pnpm typecheck`, `pnpm lint`, `pnpm format:check`), o que mudou desde o PR #29 e as decisões científicas pendentes.
